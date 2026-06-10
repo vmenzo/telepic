@@ -8,6 +8,13 @@ const state = {
     publicImages: 0,
     privateImages: 0,
     totalBytes: 0,
+    averageBytes: 0,
+    latestImageAt: null,
+    oldestImageAt: null,
+    largestImage: null,
+    mimeBreakdown: {},
+    tagBreakdown: {},
+    ownerBreakdown: {},
     tokens: 0,
     sourceBreakdown: {}
   },
@@ -223,22 +230,37 @@ async function refreshConfig() {
   try {
     state.config = await request('/api/config');
     $('#statTelegram').textContent = state.config.telegramEnabled ? '已启用' : '未启用';
+    $('#statDatabase').textContent = state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON';
+    $('#statStorage').textContent = state.config.storageDriver === 's3' ? 'S3/R2' : '本地';
     $('#telegramBadge').textContent = state.config.telegramEnabled ? '已启用' : '未配置';
     $('#telegramBadge').className = `badge ${state.config.telegramEnabled ? 'ok' : ''}`;
     $('#telegramHint').textContent = state.config.telegramEnabled
-      ? 'Bot 已接入，可直接通过 /panel 进入按钮面板，用 /token 和 /list 处理日常管理。'
+      ? 'Bot 已接入，可直接通过 /panel 进入按钮面板，用 /token、/list、/view、/delete 处理日常管理。'
       : '在 .env 中配置 TELEGRAM_BOT_TOKEN、PUBLIC_URL、TELEGRAM_ALLOWED_USER_IDS 后，再运行 webhook 脚本即可启用。';
-    $('#telegramWebhook').textContent = `Webhook\n${state.config.telegramWebhookUrl || '未配置'}`;
+    $('#telegramWebhook').textContent = state.config.telegramWebhookUrl
+      ? `Webhook\n${state.config.telegramWebhookUrl}`
+      : 'Webhook\n保存管理员密钥后显示完整 webhook 地址';
     $('#storageBadge').textContent = state.config.storageDriver === 'local' ? '本地存储' : '对象存储';
     $('#storageBadge').className = `badge ${state.config.storageDriver === 'local' ? '' : 'ok'}`;
     syncUploadGate();
     $('#systemConfig').innerHTML = [
+      configRow('应用版本', `${state.config.appName || 'telepic'} ${state.config.appVersion || ''}`.trim()),
+      configRow('Node / 平台', `${state.config.nodeVersion || '未知'} · ${state.config.platform || '未知'}`),
+      configRow('监听地址', `${state.config.host || '0.0.0.0'}:${state.config.port || ''}`),
       configRow('公开地址', state.config.publicUrl),
+      configRow('数据库驱动', state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON'),
+      configRow('数据库文件', state.config.databaseFile || (state.config.adminAuthenticated ? '未设置' : '管理员授权后显示')),
+      configRow('数据目录', state.config.dataDir || (state.config.adminAuthenticated ? '未设置' : '管理员授权后显示')),
       configRow('上传大小限制', formatBytes(state.config.maxUploadBytes)),
       configRow('匿名上传', state.config.publicUpload ? '允许' : '关闭'),
       configRow('Telegram 白名单', state.config.telegramAllowedUsersConfigured ? '已配置' : '未配置'),
+      configRow('Telegram Webhook', state.config.telegramWebhookUrl || '管理员授权后显示'),
       configRow('存储驱动', state.config.storageDriver),
       configRow('对象存储配置', state.config.s3Configured ? '已配置' : '未配置'),
+      configRow('对象存储 Bucket', state.config.s3Bucket || (state.config.storageDriver === 's3' ? '管理员授权后显示' : '未启用')),
+      configRow('对象存储 Endpoint', state.config.s3Endpoint || '未设置'),
+      configRow('对象存储区域', state.config.s3Region || '未设置'),
+      configRow('对象存储前缀', state.config.s3Prefix || '未设置'),
       configRow('对象存储公开域名', state.config.s3PublicBaseUrl || '未设置'),
       configRow(
         '当前状态',
@@ -290,6 +312,7 @@ async function refreshStats() {
     $('#sourceSummary').textContent = renderSourceSummary(stats.sourceBreakdown);
     renderVisibilityChart();
     renderSourceChart();
+    renderBreakdownCharts();
     renderStatusOverview();
   } catch (error) {
     toast(error.message);
@@ -356,7 +379,8 @@ function renderImages() {
           </a>
           <div class="asset-main">
             <strong title="${escapeHtml(image.originalName || image.id)}">${escapeHtml(image.originalName || image.id)}</strong>
-            <div class="asset-subline">ID ${image.id} · 创建于 ${formatDate(image.createdAt)}</div>
+          <div class="asset-subline">ID ${image.id} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</div>
+          <div class="asset-subline">创建于 ${formatDate(image.createdAt)}</div>
             <div class="chip-row">
               <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
               <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
@@ -366,6 +390,7 @@ function renderImages() {
         <div class="asset-cell asset-meta">
           <div>${escapeHtml(image.mime)}</div>
           <div>${formatBytes(image.size)}</div>
+          <div>归属：${escapeHtml(image.owner || '未知')}</div>
           <div>更新于 ${formatDate(image.updatedAt)}</div>
           <div class="tag-row">${tags}</div>
         </div>
@@ -508,6 +533,12 @@ async function handleDetailAction(event) {
   if (action === 'copy-html') {
     await copyText(linkFor(image, 'html'));
     toast('已复制 HTML');
+    return;
+  }
+
+  if (action === 'copy-bbcode') {
+    await copyText(linkFor(image, 'bbcode'));
+    toast('已复制 BBCode');
   }
 }
 
@@ -696,9 +727,18 @@ function withAccessToken(url) {
 function renderApiExample() {
   const publicUrl = state.config.publicUrl || window.TELEPIC.publicUrl || location.origin;
   $('#apiExample').textContent = [
+    '# 上传图片',
     'curl -H "Authorization: Bearer YOUR_TOKEN" \\',
     '  -F "image=@photo.png" \\',
-    `  ${publicUrl}/api/upload`
+    `  ${publicUrl}/api/upload`,
+    '',
+    '# URL 抓图',
+    'curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \\',
+    '  -H "Content-Type: application/json" \\',
+    `  -d '{"url":"https://example.com/photo.png"}' ${publicUrl}/api/upload-from-url`,
+    '',
+    '# 管理列表',
+    `curl -H "Authorization: Bearer ADMIN_TOKEN" "${publicUrl}/api/images?limit=20&sort=newest"`
   ].join('\n');
 }
 
@@ -739,6 +779,7 @@ function renderImageDetail() {
           <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
         </div>
         <p class="muted-text">${escapeHtml(image.mime)} · ${formatBytes(image.size)}</p>
+        <p class="muted-text">归属 ${escapeHtml(image.owner || '未知')} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</p>
       </div>
     </div>
 
@@ -757,11 +798,22 @@ function renderImageDetail() {
 
     <div class="detail-grid">
       ${configRow('图片 ID', image.id)}
+      ${configRow('文件名', image.fileName || '未记录')}
+      ${configRow('存储键', image.storageKey || '未记录')}
+      ${configRow('归属', image.owner || '未知')}
+      ${configRow('来源', sourceName(image.source))}
+      ${configRow('MIME', image.mime)}
+      ${configRow('大小', formatBytes(image.size))}
+      ${configRow('可见性', image.visibility === 'private' ? '私有' : '公开')}
       ${configRow('创建时间', formatDate(image.createdAt))}
       ${configRow('更新时间', formatDate(image.updatedAt))}
       ${configRow('SHA256', image.sha256)}
       ${configRow('页面链接', image.url)}
       ${configRow('图片直链', image.rawUrl)}
+      ${configRow('应用直链', image.appRawUrl || image.rawUrl)}
+      ${configRow('Markdown', linkFor(image, 'markdown'))}
+      ${configRow('HTML', linkFor(image, 'html'))}
+      ${configRow('BBCode', linkFor(image, 'bbcode'))}
     </div>
 
     <div class="detail-actions">
@@ -769,6 +821,7 @@ function renderImageDetail() {
       <button class="secondary" data-detail-action="copy-raw">复制图片直链</button>
       <button class="secondary" data-detail-action="copy-markdown">复制 Markdown</button>
       <button class="secondary" data-detail-action="copy-html">复制 HTML</button>
+      <button class="secondary" data-detail-action="copy-bbcode">复制 BBCode</button>
       <button class="secondary" data-detail-action="toggle-visibility">${image.visibility === 'private' ? '设为公开' : '设为私有'}</button>
       <button class="danger" data-detail-action="delete">删除图片</button>
     </div>
@@ -1138,19 +1191,54 @@ function renderSourceChart() {
     : '<p class="empty-state">暂无来源统计。</p>';
 }
 
+function renderBreakdownCharts() {
+  const target = $('#breakdownCharts');
+  if (!target) return;
+  target.innerHTML = [
+    breakdownBlock('文件类型', state.stats.mimeBreakdown, (key) => key),
+    breakdownBlock('标签 Top 6', topEntries(state.stats.tagBreakdown, 6), (key) => `#${key}`),
+    breakdownBlock('上传归属', state.stats.ownerBreakdown, (key) => key === 'unknown' ? '未知' : key)
+  ].join('');
+}
+
 function renderStatusOverview() {
   const overview = $('#statusOverview');
   if (!overview) return;
   overview.innerHTML = [
+    statusItem('数据库', state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON', state.config.databaseDriver === 'sqlite' ? 'ok' : 'neutral'),
     statusItem('存储', state.config.storageDriver === 's3' ? '对象存储' : '本地存储', state.config.storageDriver === 's3' ? 'ok' : 'neutral'),
     statusItem('对象存储', state.config.s3Configured ? '已配置' : '未配置', state.config.s3Configured ? 'ok' : 'warn'),
     statusItem('Bot', state.config.telegramEnabled ? '已启用' : '未启用', state.config.telegramEnabled ? 'ok' : 'warn'),
-    statusItem('匿名上传', state.config.publicUpload ? '开启' : '关闭', state.config.publicUpload ? 'warn' : 'neutral')
+    statusItem('匿名上传', state.config.publicUpload ? '开启' : '关闭', state.config.publicUpload ? 'warn' : 'neutral'),
+    statusItem('平均大小', formatBytes(state.stats.averageBytes || 0), 'neutral'),
+    statusItem('最新图片', state.stats.latestImageAt ? formatDate(state.stats.latestImageAt) : '暂无', 'neutral'),
+    statusItem('最大文件', state.stats.largestImage ? `${state.stats.largestImage.originalName || state.stats.largestImage.id} · ${formatBytes(state.stats.largestImage.size || 0)}` : '暂无', 'neutral')
   ].join('');
 }
 
 function configRow(label, value) {
   return `<div class="config-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+}
+
+function breakdownBlock(title, entries, labeler) {
+  const normalized = Array.isArray(entries) ? entries : Object.entries(entries || {});
+  return `
+    <div class="breakdown-block">
+      <strong>${escapeHtml(title)}</strong>
+      ${normalized.length ? normalized.map(([key, value]) => `
+        <div class="breakdown-row">
+          <span>${escapeHtml(labeler(key))}</span>
+          <b>${value}</b>
+        </div>
+      `).join('') : '<p class="empty-state compact">暂无数据</p>'}
+    </div>
+  `;
+}
+
+function topEntries(source, limit) {
+  return Object.entries(source || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
 }
 
 function legendItem(label, value, color) {

@@ -184,6 +184,14 @@ function htmlPage(config) {
           <small>Telegram</small>
           <strong id="statTelegram">未启用</strong>
         </article>
+        <article class="metric-card">
+          <small>数据库</small>
+          <strong id="statDatabase">检测中</strong>
+        </article>
+        <article class="metric-card">
+          <small>存储</small>
+          <strong id="statStorage">检测中</strong>
+        </article>
       </section>
 
       <section class="dashboard-grid">
@@ -223,6 +231,16 @@ function htmlPage(config) {
             </div>
           </div>
           <div id="statusOverview" class="status-overview"></div>
+        </article>
+
+        <article class="dashboard-panel">
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">内容结构</p>
+              <h2>类型 / 标签</h2>
+            </div>
+          </div>
+          <div id="breakdownCharts" class="breakdown-list"></div>
         </article>
       </section>
 

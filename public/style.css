@@ -281,7 +281,7 @@ a {
 }
 
 .overview-strip {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   margin-bottom: 16px;
 }
 
@@ -323,7 +323,7 @@ a {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 280px;
+  grid-template-columns: 300px minmax(280px, 1fr) 280px minmax(260px, 0.9fr);
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -922,7 +922,8 @@ a {
 
 .chart-legend,
 .status-overview,
-.source-chart {
+.source-chart,
+.breakdown-list {
   display: grid;
   gap: 12px;
 }
@@ -978,6 +979,52 @@ a {
 
 .status-item {
   grid-template-columns: 1fr auto;
+}
+
+.status-item strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-block {
+  display: grid;
+  gap: 8px;
+}
+
+.breakdown-block > strong {
+  font-size: 13px;
+}
+
+.breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 74%, var(--panel));
+  font-size: 13px;
+}
+
+.breakdown-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.breakdown-row b {
+  font-size: 13px;
+}
+
+.empty-state.compact {
+  margin: 0;
+  padding: 8px 0;
 }
 
 .status-item.ok {
@@ -1054,6 +1101,7 @@ a {
 .theme-dark .theme-preset,
 .theme-dark .legend-item,
 .theme-dark .status-item,
+.theme-dark .breakdown-row,
 .theme-dark .notice-box {
   background: color-mix(in srgb, var(--panel) 92%, var(--bg));
 }

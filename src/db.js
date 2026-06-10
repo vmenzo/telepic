@@ -470,8 +470,26 @@ function sortImages(images, sort) {
 
 function statsFor(images, tokens) {
   const totalBytes = images.reduce((sum, image) => sum + image.size, 0);
+  const sortedByTime = [...images].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const largest = [...images].sort((a, b) => (b.size || 0) - (a.size || 0))[0] || null;
   const sourceBreakdown = images.reduce((acc, image) => {
     const key = image.source || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const mimeBreakdown = images.reduce((acc, image) => {
+    const key = image.mime || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const tagBreakdown = images.reduce((acc, image) => {
+    for (const tag of image.tags || []) {
+      acc[tag] = (acc[tag] || 0) + 1;
+    }
+    return acc;
+  }, {});
+  const ownerBreakdown = images.reduce((acc, image) => {
+    const key = image.owner || 'unknown';
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
@@ -480,8 +498,19 @@ function statsFor(images, tokens) {
     publicImages: images.filter((image) => image.visibility === 'public').length,
     privateImages: images.filter((image) => image.visibility === 'private').length,
     totalBytes,
+    averageBytes: images.length ? Math.round(totalBytes / images.length) : 0,
+    latestImageAt: sortedByTime[0] ? sortedByTime[0].createdAt : null,
+    oldestImageAt: sortedByTime[sortedByTime.length - 1] ? sortedByTime[sortedByTime.length - 1].createdAt : null,
+    largestImage: largest ? {
+      id: largest.id,
+      originalName: largest.originalName,
+      size: largest.size
+    } : null,
     tokens: tokens.length,
-    sourceBreakdown
+    sourceBreakdown,
+    mimeBreakdown,
+    tagBreakdown,
+    ownerBreakdown
   };
 }
 

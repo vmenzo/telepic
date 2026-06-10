@@ -11,6 +11,7 @@ const { createStorage } = require('./storage');
 const { handleTelegramUpdate } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
 const { isImageMime, json, parseJsonBody, text } = require('./utils');
+const packageJson = require('../package.json');
 
 const db = createDb(config);
 const storage = createStorage(config);
@@ -168,15 +169,30 @@ async function route(req, res) {
   }
 
   if (req.method === 'GET' && pathname === '/api/config') {
+    const admin = requireAdmin(req, config);
     return json(res, 200, {
+      appName: packageJson.name,
+      appVersion: packageJson.version,
+      nodeVersion: process.version,
+      platform: `${process.platform}/${process.arch}`,
+      host: config.host,
+      port: config.port,
       publicUrl: config.publicUrl,
       publicUpload: config.publicUpload,
+      adminAuthenticated: admin,
+      databaseDriver: config.databaseDriver,
+      databaseFile: admin ? config.databaseFile : '',
+      dataDir: admin ? config.dataDir : '',
       telegramEnabled: Boolean(config.telegramBotToken),
       telegramAllowedUsersConfigured: config.telegramAllowedUserIds.length > 0,
-      telegramWebhookUrl: `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`,
+      telegramWebhookUrl: admin ? `${config.publicUrl}/telegram/${config.telegramWebhookSecret}` : '',
       storageDriver: config.storageDriver,
       s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey),
-      s3Bucket: config.s3Bucket || '',
+      s3Bucket: admin ? (config.s3Bucket || '') : '',
+      s3Endpoint: admin ? (config.s3Endpoint || '') : '',
+      s3Region: config.s3Region || '',
+      s3Prefix: config.s3Prefix || '',
+      s3ForcePathStyle: config.s3ForcePathStyle,
       s3PublicBaseUrl: config.s3PublicBaseUrl || '',
       maxUploadBytes: config.maxUploadBytes
     });
@@ -336,14 +352,15 @@ function publicImage(image) {
     sha256: image.sha256,
     source: image.source,
     owner: image.owner,
+    fileName: image.fileName,
+    storageKey: image.storageKey || image.fileName,
     tags: image.tags || [],
     visibility: image.visibility,
     createdAt: image.createdAt,
     updatedAt: image.updatedAt,
     url: image.url || `${config.publicUrl}/i/${image.id}`,
     rawUrl: image.visibility === 'private' ? fallbackRawUrl : (storageRawUrl || fallbackRawUrl),
-    appRawUrl: fallbackRawUrl,
-    storageKey: image.storageKey || image.fileName
+    appRawUrl: fallbackRawUrl
   };
 }
 

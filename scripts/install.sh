@@ -3,7 +3,7 @@ set -eu
 
 APP_NAME="${APP_NAME:-telepic}"
 APP_DIR="${APP_DIR:-/opt/telepic}"
-REPO_URL="${TELEPIC_REPO:-https://github.com/YOUR_GITHUB_USERNAME/telepic.git}"
+REPO_URL="${TELEPIC_REPO:-https://github.com/vmenzo/telepic.git}"
 BRANCH="${TELEPIC_BRANCH:-main}"
 PORT="${PORT:-8787}"
 PUBLIC_URL="${PUBLIC_URL:-}"
@@ -35,23 +35,68 @@ compose_cmd() {
   echo ""
 }
 
-echo "==> Checking runtime"
-need_cmd git
-need_cmd docker
-COMPOSE="$(compose_cmd)"
-if [ -z "$COMPOSE" ]; then
-  echo "Docker Compose is required. Install Docker Compose v2 first."
-  exit 1
-fi
+package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then echo "apt"; return; fi
+  if command -v dnf >/dev/null 2>&1; then echo "dnf"; return; fi
+  if command -v yum >/dev/null 2>&1; then echo "yum"; return; fi
+  if command -v apk >/dev/null 2>&1; then echo "apk"; return; fi
+  if command -v pacman >/dev/null 2>&1; then echo "pacman"; return; fi
+  echo ""
+}
+
+install_runtime() {
+  PM="$(package_manager)"
+  if [ -z "$PM" ]; then
+    echo "Cannot detect package manager. Please install git, Docker, and Docker Compose first."
+    exit 1
+  fi
+
+  echo "==> Installing runtime with ${PM}"
+  case "$PM" in
+    apt)
+      apt-get update
+      apt-get install -y git ca-certificates curl docker.io docker-compose-plugin || apt-get install -y git ca-certificates curl docker.io docker-compose
+      ;;
+    dnf)
+      dnf install -y git docker docker-compose-plugin || dnf install -y git docker docker-compose
+      ;;
+    yum)
+      yum install -y git docker docker-compose-plugin || yum install -y git docker docker-compose
+      ;;
+    apk)
+      apk add --no-cache git docker docker-cli-compose || apk add --no-cache git docker docker-compose
+      ;;
+    pacman)
+      pacman -Sy --noconfirm git docker docker-compose
+      ;;
+  esac
+}
+
+start_docker() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now docker >/dev/null 2>&1 || true
+    return
+  fi
+  if command -v service >/dev/null 2>&1; then
+    service docker start >/dev/null 2>&1 || true
+  fi
+}
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root, for example: sudo sh scripts/install.sh"
   exit 1
 fi
 
-if [ "$REPO_URL" = "https://github.com/YOUR_GITHUB_USERNAME/telepic.git" ]; then
-  echo "Set TELEPIC_REPO first, for example:"
-  echo "TELEPIC_REPO=https://github.com/yourname/telepic.git sh scripts/install.sh"
+echo "==> Checking Linux runtime"
+if ! command -v git >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
+  install_runtime
+fi
+need_cmd git
+need_cmd docker
+start_docker
+COMPOSE="$(compose_cmd)"
+if [ -z "$COMPOSE" ]; then
+  echo "Docker Compose is required. Install Docker Compose v2 first."
   exit 1
 fi
 
@@ -81,6 +126,8 @@ if [ ! -f .env ]; then
   sed -i "s|^PORT=.*|PORT=${PORT}|" .env
   sed -i "s|^PUBLIC_URL=.*|PUBLIC_URL=${PUBLIC_URL}|" .env
   sed -i "s|^DATA_DIR=.*|DATA_DIR=/app/data|" .env
+  sed -i "s|^DATABASE_DRIVER=.*|DATABASE_DRIVER=sqlite|" .env
+  sed -i "s|^DATABASE_FILE=.*|DATABASE_FILE=/app/data/telepic.sqlite|" .env
   sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|" .env
   sed -i "s|^TELEGRAM_WEBHOOK_SECRET=.*|TELEGRAM_WEBHOOK_SECRET=${WEBHOOK_SECRET}|" .env
 else

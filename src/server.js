@@ -5,14 +5,14 @@ const { URL } = require('url');
 
 const config = require('./config');
 const { requireAdmin, requireManage, requireUpload } = require('./auth');
-const { JsonDb } = require('./db');
+const { createDb } = require('./db');
 const { parseMultipartRequest } = require('./multipart');
 const { createStorage } = require('./storage');
 const { handleTelegramUpdate } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
 const { isImageMime, json, parseJsonBody, text } = require('./utils');
 
-const db = new JsonDb(path.join(config.dataDir, 'db.json'));
+const db = createDb(config);
 const storage = createStorage(config);
 
 db.load();

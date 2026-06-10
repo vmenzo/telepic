@@ -10,6 +10,8 @@ services:
       PORT: ${PORT:-8787}
       PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:8787}
       DATA_DIR: ${DATA_DIR:-/app/data}
+      DATABASE_DRIVER: ${DATABASE_DRIVER:-sqlite}
+      DATABASE_FILE: ${DATABASE_FILE:-/app/data/telepic.sqlite}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-auto}

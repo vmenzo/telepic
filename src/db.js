@@ -2,6 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const { now, randomId, sha256 } = require('./utils');
 
+function createDb(config) {
+  if (config.databaseDriver === 'sqlite') {
+    return new SqliteDb(config.databaseFile, path.join(config.dataDir, 'db.json'));
+  }
+  return new JsonDb(path.join(config.dataDir, 'db.json'));
+}
+
 class JsonDb {
   constructor(filePath) {
     this.filePath = filePath;
@@ -38,41 +45,8 @@ class JsonDb {
     return image;
   }
 
-  listImages({ limit = 50, offset = 0, includePrivate = false, q = '', visibility = '', source = '', tag = '', sort = 'newest' } = {}) {
-    const keyword = String(q || '').trim().toLowerCase();
-    let images = includePrivate
-      ? this.state.images
-      : this.state.images.filter((image) => image.visibility === 'public');
-
-    if (visibility && ['public', 'private'].includes(visibility)) {
-      images = images.filter((image) => image.visibility === visibility);
-    }
-
-    if (source) {
-      images = images.filter((image) => image.source === source);
-    }
-
-    if (tag) {
-      const needle = String(tag).trim().toLowerCase();
-      images = images.filter((image) => Array.isArray(image.tags) && image.tags.some((item) => String(item).toLowerCase() === needle));
-    }
-
-    if (keyword) {
-      images = images.filter((image) => {
-        return [
-          image.id,
-          image.originalName,
-          image.mime,
-          image.sha256,
-          image.source,
-          image.owner,
-          ...(Array.isArray(image.tags) ? image.tags : [])
-        ].some((value) => String(value || '').toLowerCase().includes(keyword));
-      });
-    }
-
-    images = this.sortImages(images, sort);
-    return images.slice(offset, offset + limit);
+  listImages(options = {}) {
+    return filterAndSortImages(this.state.images, options);
   }
 
   getImage(id) {
@@ -103,7 +77,7 @@ class JsonDb {
       id: randomId(8),
       name: name || 'API token',
       tokenHash: sha256(Buffer.from(token)),
-      scopes: Array.isArray(scopes) && scopes.length ? scopes : ['upload'],
+      scopes: normalizeScopes(scopes),
       createdAt: now(),
       lastUsedAt: null
     };
@@ -145,20 +119,7 @@ class JsonDb {
   }
 
   stats() {
-    const totalBytes = this.state.images.reduce((sum, image) => sum + image.size, 0);
-    const sourceBreakdown = this.state.images.reduce((acc, image) => {
-      const key = image.source || 'unknown';
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    return {
-      images: this.state.images.length,
-      publicImages: this.state.images.filter((image) => image.visibility === 'public').length,
-      privateImages: this.state.images.filter((image) => image.visibility === 'private').length,
-      totalBytes,
-      tokens: this.state.tokens.length,
-      sourceBreakdown
-    };
+    return statsFor(this.state.images, this.state.tokens);
   }
 
   listEvents({ limit = 30 } = {}) {
@@ -170,32 +131,384 @@ class JsonDb {
     this.state.events = this.state.events.slice(0, 500);
   }
 
-  sortImages(images, sort) {
-    const list = [...images];
-    if (sort === 'oldest') {
-      return list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-    }
-    if (sort === 'name') {
-      return list.sort((a, b) => String(a.originalName || '').localeCompare(String(b.originalName || ''), 'zh-CN'));
-    }
-    if (sort === 'size-desc') {
-      return list.sort((a, b) => b.size - a.size);
-    }
-    if (sort === 'size-asc') {
-      return list.sort((a, b) => a.size - b.size);
-    }
-    return list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  }
-
   publicToken(token) {
-    return {
-      id: token.id,
-      name: token.name,
-      scopes: token.scopes,
-      createdAt: token.createdAt,
-      lastUsedAt: token.lastUsedAt
-    };
+    return publicToken(token);
   }
 }
 
-module.exports = { JsonDb };
+class SqliteDb {
+  constructor(filePath, importJsonPath) {
+    this.filePath = filePath;
+    this.importJsonPath = importJsonPath;
+    this.db = null;
+  }
+
+  load() {
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    const { DatabaseSync } = require('node:sqlite');
+    this.db = new DatabaseSync(this.filePath);
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA foreign_keys = ON');
+    this.migrate();
+    this.importJsonIfNeeded();
+  }
+
+  migrate() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS images (
+        id TEXT PRIMARY KEY,
+        file_name TEXT,
+        storage_key TEXT,
+        original_name TEXT,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT,
+        source TEXT,
+        owner TEXT,
+        tags TEXT NOT NULL DEFAULT '[]',
+        visibility TEXT NOT NULL DEFAULT 'public',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        url TEXT,
+        raw_url TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at);
+      CREATE INDEX IF NOT EXISTS idx_images_visibility ON images(visibility);
+      CREATE INDEX IF NOT EXISTS idx_images_source ON images(source);
+
+      CREATE TABLE IF NOT EXISTS tokens (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        scopes TEXT NOT NULL DEFAULT '["upload"]',
+        created_at TEXT NOT NULL,
+        last_used_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
+    `);
+  }
+
+  importJsonIfNeeded() {
+    if (!this.importJsonPath || !fs.existsSync(this.importJsonPath)) return;
+    const count = this.db.prepare('SELECT COUNT(*) AS count FROM images').get().count;
+    if (count > 0) return;
+
+    const raw = fs.readFileSync(this.importJsonPath, 'utf8');
+    if (!raw.trim()) return;
+    const state = JSON.parse(raw);
+    const insertImage = this.db.prepare(`
+      INSERT OR IGNORE INTO images (
+        id, file_name, storage_key, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertToken = this.db.prepare(`
+      INSERT OR IGNORE INTO tokens (id, name, token_hash, scopes, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const insertEvent = this.db.prepare(`
+      INSERT OR IGNORE INTO events (id, type, details, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    this.db.exec('BEGIN');
+    try {
+      for (const image of state.images || []) insertImage.run(...imageValues(image));
+      for (const token of state.tokens || []) {
+        insertToken.run(token.id, token.name || 'API token', token.tokenHash, jsonText(normalizeScopes(token.scopes)), token.createdAt || now(), token.lastUsedAt || null);
+      }
+      for (const event of state.events || []) {
+        insertEvent.run(event.id || randomId(8), event.type || 'event', jsonText(event.details || {}), event.createdAt || now());
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  addImage(image) {
+    this.db.prepare(`
+      INSERT INTO images (
+        id, file_name, storage_key, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(...imageValues(image));
+    this.addEvent('image.created', { id: image.id, source: image.source });
+    return image;
+  }
+
+  listImages(options = {}) {
+    const rows = this.db.prepare('SELECT * FROM images').all();
+    return filterAndSortImages(rows.map(rowToImage), options);
+  }
+
+  getImage(id) {
+    const row = this.db.prepare('SELECT * FROM images WHERE id = ?').get(id);
+    return row ? rowToImage(row) : null;
+  }
+
+  updateImage(id, patch) {
+    const image = this.getImage(id);
+    if (!image) return null;
+    const updated = { ...image, ...patch, updatedAt: now() };
+    this.db.prepare(`
+      UPDATE images SET
+        file_name = ?, storage_key = ?, original_name = ?, mime = ?, size = ?, sha256 = ?, source = ?, owner = ?,
+        tags = ?, visibility = ?, created_at = ?, updated_at = ?, url = ?, raw_url = ?
+      WHERE id = ?
+    `).run(
+      updated.fileName || null,
+      updated.storageKey || null,
+      updated.originalName || null,
+      updated.mime,
+      updated.size || 0,
+      updated.sha256 || null,
+      updated.source || null,
+      updated.owner || null,
+      jsonText(updated.tags || []),
+      updated.visibility || 'public',
+      updated.createdAt,
+      updated.updatedAt,
+      updated.url || null,
+      updated.rawUrl || null,
+      id
+    );
+    this.addEvent('image.updated', { id, patch });
+    return updated;
+  }
+
+  deleteImage(id) {
+    const image = this.getImage(id);
+    if (!image) return null;
+    this.db.prepare('DELETE FROM images WHERE id = ?').run(id);
+    this.addEvent('image.deleted', { id });
+    return image;
+  }
+
+  createToken({ name, scopes }) {
+    const token = `tp_${randomId(24)}`;
+    const record = {
+      id: randomId(8),
+      name: name || 'API token',
+      tokenHash: sha256(Buffer.from(token)),
+      scopes: normalizeScopes(scopes),
+      createdAt: now(),
+      lastUsedAt: null
+    };
+    this.db.prepare(`
+      INSERT INTO tokens (id, name, token_hash, scopes, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(record.id, record.name, record.tokenHash, jsonText(record.scopes), record.createdAt, record.lastUsedAt);
+    this.addEvent('token.created', { id: record.id, name: record.name });
+    return { token, record: this.publicToken(record) };
+  }
+
+  listTokens() {
+    return this.db.prepare('SELECT * FROM tokens ORDER BY created_at DESC').all().map((row) => this.publicToken(rowToToken(row)));
+  }
+
+  getToken(id) {
+    const row = this.db.prepare('SELECT * FROM tokens WHERE id = ?').get(id);
+    return row ? this.publicToken(rowToToken(row)) : null;
+  }
+
+  findToken(rawToken) {
+    if (!rawToken) return null;
+    const tokenHash = sha256(Buffer.from(rawToken));
+    const row = this.db.prepare('SELECT * FROM tokens WHERE token_hash = ?').get(tokenHash);
+    return row ? rowToToken(row) : null;
+  }
+
+  touchToken(id) {
+    this.db.prepare('UPDATE tokens SET last_used_at = ? WHERE id = ?').run(now(), id);
+  }
+
+  deleteToken(id) {
+    const row = this.db.prepare('SELECT * FROM tokens WHERE id = ?').get(id);
+    if (!row) return null;
+    this.db.prepare('DELETE FROM tokens WHERE id = ?').run(id);
+    this.addEvent('token.deleted', { id });
+    return this.publicToken(rowToToken(row));
+  }
+
+  stats() {
+    return statsFor(this.db.prepare('SELECT * FROM images').all().map(rowToImage), this.db.prepare('SELECT id FROM tokens').all());
+  }
+
+  listEvents({ limit = 30 } = {}) {
+    return this.db.prepare('SELECT * FROM events ORDER BY created_at DESC LIMIT ?').all(limit).map(rowToEvent);
+  }
+
+  addEvent(type, details) {
+    this.db.prepare('INSERT INTO events (id, type, details, created_at) VALUES (?, ?, ?, ?)').run(randomId(8), type, jsonText(details || {}), now());
+    this.db.prepare('DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY created_at DESC LIMIT 500)').run();
+  }
+
+  publicToken(token) {
+    return publicToken(token);
+  }
+}
+
+function imageValues(image) {
+  return [
+    image.id,
+    image.fileName || null,
+    image.storageKey || image.fileName || null,
+    image.originalName || image.fileName || image.id,
+    image.mime,
+    image.size || 0,
+    image.sha256 || null,
+    image.source || 'api',
+    image.owner || null,
+    jsonText(image.tags || []),
+    image.visibility || 'public',
+    image.createdAt || now(),
+    image.updatedAt || image.createdAt || now(),
+    image.url || null,
+    image.rawUrl || null
+  ];
+}
+
+function rowToImage(row) {
+  return {
+    id: row.id,
+    fileName: row.file_name,
+    storageKey: row.storage_key,
+    originalName: row.original_name,
+    mime: row.mime,
+    size: Number(row.size || 0),
+    sha256: row.sha256,
+    source: row.source,
+    owner: row.owner,
+    tags: parseJson(row.tags, []),
+    visibility: row.visibility || 'public',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    url: row.url,
+    rawUrl: row.raw_url
+  };
+}
+
+function rowToToken(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    tokenHash: row.token_hash,
+    scopes: parseJson(row.scopes, ['upload']),
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at
+  };
+}
+
+function rowToEvent(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    details: parseJson(row.details, {}),
+    createdAt: row.created_at
+  };
+}
+
+function filterAndSortImages(sourceImages, { limit = 50, offset = 0, includePrivate = false, q = '', visibility = '', source = '', tag = '', sort = 'newest' } = {}) {
+  const keyword = String(q || '').trim().toLowerCase();
+  let images = includePrivate
+    ? sourceImages
+    : sourceImages.filter((image) => image.visibility === 'public');
+
+  if (visibility && ['public', 'private'].includes(visibility)) {
+    images = images.filter((image) => image.visibility === visibility);
+  }
+
+  if (source) {
+    images = images.filter((image) => image.source === source);
+  }
+
+  if (tag) {
+    const needle = String(tag).trim().toLowerCase();
+    images = images.filter((image) => Array.isArray(image.tags) && image.tags.some((item) => String(item).toLowerCase() === needle));
+  }
+
+  if (keyword) {
+    images = images.filter((image) => {
+      return [
+        image.id,
+        image.originalName,
+        image.mime,
+        image.sha256,
+        image.source,
+        image.owner,
+        ...(Array.isArray(image.tags) ? image.tags : [])
+      ].some((value) => String(value || '').toLowerCase().includes(keyword));
+    });
+  }
+
+  return sortImages(images, sort).slice(offset, offset + limit);
+}
+
+function sortImages(images, sort) {
+  const list = [...images];
+  if (sort === 'oldest') {
+    return list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  }
+  if (sort === 'name') {
+    return list.sort((a, b) => String(a.originalName || '').localeCompare(String(b.originalName || ''), 'zh-CN'));
+  }
+  if (sort === 'size-desc') {
+    return list.sort((a, b) => b.size - a.size);
+  }
+  if (sort === 'size-asc') {
+    return list.sort((a, b) => a.size - b.size);
+  }
+  return list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function statsFor(images, tokens) {
+  const totalBytes = images.reduce((sum, image) => sum + image.size, 0);
+  const sourceBreakdown = images.reduce((acc, image) => {
+    const key = image.source || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    images: images.length,
+    publicImages: images.filter((image) => image.visibility === 'public').length,
+    privateImages: images.filter((image) => image.visibility === 'private').length,
+    totalBytes,
+    tokens: tokens.length,
+    sourceBreakdown
+  };
+}
+
+function publicToken(token) {
+  return {
+    id: token.id,
+    name: token.name,
+    scopes: token.scopes,
+    createdAt: token.createdAt,
+    lastUsedAt: token.lastUsedAt
+  };
+}
+
+function normalizeScopes(scopes) {
+  return Array.isArray(scopes) && scopes.length ? scopes : ['upload'];
+}
+
+function jsonText(value) {
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+function parseJson(value, fallback) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+module.exports = { JsonDb, SqliteDb, createDb };

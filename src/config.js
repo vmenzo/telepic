@@ -18,6 +18,9 @@ loadEnvFile(path.resolve(process.cwd(), '.env'));
 
 const rootDir = path.resolve(process.cwd());
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || './data');
+const databaseFile = process.env.DATABASE_FILE
+  ? path.resolve(rootDir, process.env.DATABASE_FILE)
+  : path.join(dataDir, 'telepic.sqlite');
 
 function bool(value, fallback) {
   if (value === undefined || value === '') return fallback;
@@ -35,6 +38,8 @@ function csv(value) {
 module.exports = {
   rootDir,
   dataDir,
+  databaseDriver: process.env.DATABASE_DRIVER || 'sqlite',
+  databaseFile,
   uploadDir: path.join(dataDir, 'uploads'),
   storageDriver: process.env.STORAGE_DRIVER || 'local',
   s3Bucket: process.env.S3_BUCKET || '',

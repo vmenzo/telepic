@@ -105,6 +105,8 @@ const state = {
   activeImageId: null,
   uploadHistory: [],
   theme: loadTheme(),
+  mainView: 'library',
+  activeAlbum: '',
   inspectorPane: 'detail',
   loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
 };
@@ -196,6 +198,11 @@ function bindEvents() {
   on('#copySelectedLinks', 'click', copySelectedLinks);
   on('#applyBatchTags', 'click', applyBatchTags);
   on('#clearBatchTags', 'click', clearBatchTags);
+  on('#mainNav', 'click', handleMainNav);
+  on('#createAlbum', 'click', createAlbum);
+  on('#assignSelectedAlbum', 'click', assignSelectedToAlbum);
+  on('#clearAlbumFilter', 'click', clearAlbumFilter);
+  on('#albumGrid', 'click', handleAlbumGridClick);
   on('#inspectorTabs', 'click', handleInspectorTabs);
   on('#themePreset', 'change', onThemePresetChange);
   on('#themeQuickPicks', 'click', handleThemeQuickPick);
@@ -486,6 +493,8 @@ async function refresh() {
   }
   renderApiExample();
   renderBatchTagSummary();
+  mountIntegrationPanels();
+  renderAlbums();
 }
 
 async function refreshConfig() {
@@ -600,7 +609,7 @@ async function refreshImages() {
   const params = new URLSearchParams({
     limit: '120',
     q: $('#searchInput').value.trim(),
-    tag: $('#tagFilter').value.trim(),
+    tag: state.activeAlbum || $('#tagFilter').value.trim(),
     visibility: $('#visibilityFilter').value,
     source: $('#sourceFilter').value,
     sort: $('#sortFilter').value
@@ -618,6 +627,7 @@ async function refreshImages() {
     renderImages();
     renderSelectionSummary();
     renderImageDetail();
+    renderAlbums();
   } catch (error) {
     $('#gallery').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
   }
@@ -1190,7 +1200,160 @@ function renderEvents(events) {
 function renderSelectionSummary() {
   const count = state.selected.size;
   $('#selectionSummary').textContent = count ? `已选择 ${count} 张图片` : '未选择图片';
+  const albumSummary = $('#albumSelectionSummary');
+  if (albumSummary) albumSummary.textContent = count ? `已选择 ${count} 张图片` : '未选择图片';
   renderBatchTagSummary();
+}
+
+function handleMainNav(event) {
+  const button = event.target.closest('[data-main-view]');
+  if (!button) return;
+  setMainView(button.dataset.mainView);
+}
+
+function setMainView(view) {
+  state.mainView = view;
+  document.querySelectorAll('.main-nav-button').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.mainView === view);
+  });
+  const visibleView = view === 'system' ? 'library' : view;
+  document.querySelectorAll('.main-view').forEach((section) => {
+    section.classList.toggle('is-active', section.id === `view-${visibleView}`);
+  });
+  if (view === 'system') setInspectorPane('system');
+  if (view === 'bot' || view === 'storage') mountIntegrationPanels();
+  if (view === 'albums') renderAlbums();
+}
+
+function mountIntegrationPanels() {
+  const telegramPanel = $('#telegramConfigPanel');
+  const telegramMount = $('#telegramConfigMount');
+  if (telegramPanel && telegramMount && telegramPanel.parentElement !== telegramMount) {
+    telegramMount.appendChild(telegramPanel);
+  }
+  const storagePanel = $('#storageConfigPanel');
+  const storageMount = $('#storageConfigMount');
+  if (storagePanel && storageMount && storagePanel.parentElement !== storageMount) {
+    storageMount.appendChild(storagePanel);
+  }
+}
+
+function albumTag(name) {
+  const clean = String(name || '').trim().replace(/^相册[:：]/, '').slice(0, 40);
+  return clean ? `相册:${clean}` : '';
+}
+
+function albumNameFromTag(tag) {
+  return String(tag || '').replace(/^相册[:：]/, '');
+}
+
+function albumList() {
+  const map = new Map();
+  for (const image of state.images) {
+    for (const tag of image.tags || []) {
+      if (!String(tag).startsWith('相册:')) continue;
+      const name = albumNameFromTag(tag);
+      if (!map.has(tag)) map.set(tag, { tag, name, count: 0, bytes: 0, cover: image });
+      const album = map.get(tag);
+      album.count += 1;
+      album.bytes += image.size || 0;
+      if (!album.cover) album.cover = image;
+    }
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+}
+
+function renderAlbums() {
+  const grid = $('#albumGrid');
+  if (!grid) return;
+  const albums = albumList();
+  grid.innerHTML = albums.map((album) => `
+    <article class="album-card ${state.activeAlbum === album.tag ? 'is-active' : ''}" data-album="${escapeHtml(album.tag)}">
+      <div class="album-cover">
+        ${album.cover ? `<img src="${previewRawUrl(album.cover)}" alt="${escapeHtml(album.name)}" loading="lazy">` : '<span>相册</span>'}
+      </div>
+      <div class="album-body">
+        <strong>${escapeHtml(album.name)}</strong>
+        <span>${album.count} 张图片 · ${formatBytes(album.bytes)}</span>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" data-album-action="open">打开</button>
+        <button type="button" class="secondary" data-album-action="add">加入已选</button>
+      </div>
+    </article>
+  `).join('') || '<p class="empty-state">还没有相册。输入名称创建相册，或选中图片后加入相册。</p>';
+  renderSelectionSummary();
+}
+
+async function createAlbum() {
+  const input = $('#albumNameInput');
+  const tag = albumTag(input ? input.value : '');
+  const result = $('#albumResult');
+  if (!tag) {
+    if (result) result.textContent = '请输入相册名称。';
+    return;
+  }
+  if (input) input.value = '';
+  if (result) result.textContent = `相册“${albumNameFromTag(tag)}”已创建。选择图片后可加入这个相册。`;
+  state.activeAlbum = tag;
+  setMainView('library');
+  $('#tagFilter').value = tag;
+  await refreshImages();
+  toast('相册已创建');
+}
+
+async function assignSelectedToAlbum() {
+  const ids = [...state.selected];
+  const inputTag = albumTag($('#albumNameInput') ? $('#albumNameInput').value : '');
+  const tag = inputTag || state.activeAlbum;
+  if (!ids.length) {
+    toast('先在图片页选择要加入相册的图片');
+    return;
+  }
+  if (!tag) {
+    toast('先输入相册名称或打开一个相册');
+    return;
+  }
+  const selectedImages = state.images.filter((image) => ids.includes(image.id));
+  for (const image of selectedImages) {
+    const tags = Array.from(new Set([...(image.tags || []), tag]));
+    await request(`/api/images/${image.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tags })
+    });
+  }
+  if ($('#albumNameInput')) $('#albumNameInput').value = '';
+  state.activeAlbum = tag;
+  $('#tagFilter').value = tag;
+  toast(`已加入相册：${albumNameFromTag(tag)}`);
+  await refresh();
+  setMainView('albums');
+}
+
+async function handleAlbumGridClick(event) {
+  const card = event.target.closest('[data-album]');
+  if (!card) return;
+  const action = event.target.closest('[data-album-action]');
+  const tag = card.dataset.album;
+  state.activeAlbum = tag;
+  if (action && action.dataset.albumAction === 'add') {
+    await assignSelectedToAlbum();
+    return;
+  }
+  $('#tagFilter').value = tag;
+  setMainView('library');
+  await refreshImages();
+  toast(`已筛选相册：${albumNameFromTag(tag)}`);
+}
+
+async function clearAlbumFilter() {
+  state.activeAlbum = '';
+  const tagFilter = $('#tagFilter');
+  if (tagFilter && String(tagFilter.value).startsWith('相册:')) tagFilter.value = '';
+  await refreshImages();
+  renderAlbums();
+  toast('已清除相册筛选');
 }
 
 function renderImageDetail() {

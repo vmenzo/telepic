@@ -193,6 +193,14 @@ function htmlPage(config) {
 
       <div id="flashMessage" class="flash-bar">准备就绪</div>
 
+      <nav id="mainNav" class="main-nav" aria-label="主功能导航">
+        <button type="button" class="main-nav-button is-active" data-main-view="library">图片</button>
+        <button type="button" class="main-nav-button" data-main-view="albums">相册</button>
+        <button type="button" class="main-nav-button" data-main-view="bot">Bot 配置</button>
+        <button type="button" class="main-nav-button" data-main-view="storage">存储桶</button>
+        <button type="button" class="main-nav-button" data-main-view="system">系统</button>
+      </nav>
+
       <section class="overview-strip">
         <article class="metric-card">
           <small>图片总数</small>
@@ -278,7 +286,61 @@ function htmlPage(config) {
         </article>
       </section>
 
-      <section class="content-grid">
+      <section id="view-albums" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Albums</p>
+              <h2>相册管理</h2>
+              <p class="section-text">相册基于图片标签组织，创建相册后可以把当前选中的图片加入相册，也可以点相册快速筛选。</p>
+            </div>
+            <div class="actions">
+              <input id="albumNameInput" class="wide-input" placeholder="新相册名称">
+              <button id="createAlbum" type="button">创建相册</button>
+            </div>
+          </div>
+          <div class="selection-bar">
+            <div class="selection-copy">
+              <strong id="albumSelectionSummary">未选择图片</strong>
+              <span class="muted-text">先在图片页勾选图片，再回到这里加入相册。</span>
+            </div>
+            <div class="actions">
+              <button id="assignSelectedAlbum" class="secondary" type="button">把已选图片加入相册</button>
+              <button id="clearAlbumFilter" class="secondary" type="button">清除相册筛选</button>
+            </div>
+          </div>
+          <div id="albumResult" class="result-box"></div>
+          <div id="albumGrid" class="album-grid"></div>
+        </section>
+      </section>
+
+      <section id="view-bot" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Telegram Bot</p>
+              <h2>Bot 快捷对接</h2>
+              <p class="section-text">在这里配置 Bot Token、Webhook、白名单用户，并把 Telegram 管理能力接到图床。</p>
+            </div>
+          </div>
+          <div id="telegramConfigMount"></div>
+        </section>
+      </section>
+
+      <section id="view-storage" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Object Storage</p>
+              <h2>第三方存储桶</h2>
+              <p class="section-text">支持 S3 兼容对象存储，可对接 Cloudflare R2、MinIO、Backblaze B2、AWS S3 等常见存储桶。</p>
+            </div>
+          </div>
+          <div id="storageConfigMount"></div>
+        </section>
+      </section>
+
+      <section class="content-grid main-view is-active" id="view-library">
         <section class="library-shell">
           <div class="section-head">
             <div>
@@ -385,7 +447,7 @@ function htmlPage(config) {
               <span id="storageBadge" class="badge">检测中</span>
             </div>
             <div id="systemConfig" class="config-list"></div>
-            <div class="integration-panel">
+            <div id="telegramConfigPanel" class="integration-panel">
               <div class="panel-head compact">
                 <div>
                   <p class="panel-kicker">Telegram Bot</p>
@@ -418,7 +480,7 @@ function htmlPage(config) {
               <div id="telegramConfigResult" class="result-box"></div>
             </div>
 
-            <div class="integration-panel">
+            <div id="storageConfigPanel" class="integration-panel">
               <div class="panel-head compact">
                 <div>
                   <p class="panel-kicker">Object Storage</p>

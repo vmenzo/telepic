@@ -21,7 +21,8 @@ const state = {
   activeImageId: null,
   uploadHistory: [],
   theme: loadTheme(),
-  inspectorPane: 'detail'
+  inspectorPane: 'detail',
+  loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
 };
 
 const THEME_PRESETS = {
@@ -106,6 +107,15 @@ try {
 
 function bindEvents() {
   on('#saveToken', 'click', saveAdminToken);
+  on('#logoutToken', 'click', logoutAdminToken);
+  on('#loginButton', 'click', saveLoginToken);
+  on('#loginGuest', 'click', dismissLogin);
+  on('#loginToken', 'keydown', (event) => {
+    if (event.key === 'Enter') saveLoginToken();
+  });
+  on('#adminToken', 'keydown', (event) => {
+    if (event.key === 'Enter') saveAdminToken();
+  });
   on('#fileInput', 'change', (event) => uploadFiles(event.target.files));
   on('#dropzone', 'dragover', onDragOver);
   on('#dropzone', 'dragleave', onDragLeave);
@@ -145,20 +155,74 @@ function bindEvents() {
 function hydrateSession() {
   const tokenInput = $('#adminToken');
   if (tokenInput) tokenInput.value = state.adminToken;
+  const loginInput = $('#loginToken');
+  if (loginInput) loginInput.value = state.adminToken;
   syncAdminState();
 }
 
 function saveAdminToken() {
   state.adminToken = $('#adminToken').value.trim();
-  localStorage.setItem('telepic.adminToken', state.adminToken);
+  persistAdminToken(state.adminToken);
+  toast(state.adminToken ? '管理员身份已更新' : '已清空管理员密钥');
+}
+
+function saveLoginToken() {
+  const token = $('#loginToken').value.trim();
+  if (!token) {
+    $('#loginMessage').textContent = '请输入管理员 Token。';
+    return;
+  }
+  state.adminToken = token;
+  const tokenInput = $('#adminToken');
+  if (tokenInput) tokenInput.value = token;
+  state.loginDismissed = false;
+  sessionStorage.removeItem('telepic.loginDismissed');
+  persistAdminToken(token);
+  $('#loginMessage').textContent = '已登录。';
+  toast('管理员登录成功');
+}
+
+function logoutAdminToken() {
+  state.adminToken = '';
+  state.loginDismissed = false;
+  localStorage.removeItem('telepic.adminToken');
+  sessionStorage.removeItem('telepic.loginDismissed');
+  const tokenInput = $('#adminToken');
+  const loginInput = $('#loginToken');
+  if (tokenInput) tokenInput.value = '';
+  if (loginInput) loginInput.value = '';
   syncAdminState();
-  setRuntimeStatus(state.adminToken ? '管理员密钥已写入本地浏览器' : '管理员密钥已清空');
-  toast(state.adminToken ? '管理员密钥已保存' : '已清空管理员密钥');
+  refresh();
+  toast('已退出管理员登录');
+}
+
+function dismissLogin() {
+  state.loginDismissed = true;
+  sessionStorage.setItem('telepic.loginDismissed', '1');
+  syncAdminState();
+}
+
+function persistAdminToken(token) {
+  if (token) {
+    localStorage.setItem('telepic.adminToken', token);
+  } else {
+    localStorage.removeItem('telepic.adminToken');
+  }
+  syncAdminState();
+  setRuntimeStatus(token ? '管理员已登录，本地浏览器已保存' : '未登录管理员');
   refresh();
 }
 
 function syncAdminState() {
-  $('#adminState').textContent = state.adminToken ? '管理员密钥已保存到本地浏览器' : '未保存管理员密钥';
+  const loggedIn = Boolean(state.adminToken);
+  const overlay = $('#loginOverlay');
+  const logout = $('#logoutToken');
+  $('#adminState').textContent = loggedIn ? '管理员已登录，本地浏览器已保存' : '未登录管理员';
+  if (logout) logout.disabled = !loggedIn;
+  if (overlay) {
+    overlay.classList.toggle('is-hidden', loggedIn || state.loginDismissed);
+    overlay.setAttribute('aria-hidden', loggedIn || state.loginDismissed ? 'true' : 'false');
+  }
   syncUploadGate();
 }
 

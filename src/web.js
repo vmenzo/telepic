@@ -11,6 +11,27 @@ function htmlPage(config) {
   <link rel="stylesheet" href="/assets/style.css?v=${assetVersion}">
 </head>
 <body class="app-body">
+  <div id="loginOverlay" class="login-overlay">
+    <section class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">TP</div>
+        <div>
+          <p class="eyebrow">Admin Login</p>
+          <h1>Telepic 管理员登录</h1>
+        </div>
+      </div>
+      <label class="field-stack">
+        <span>管理员 Token</span>
+        <input id="loginToken" type="password" placeholder="输入 ADMIN_TOKEN">
+      </label>
+      <div class="login-actions">
+        <button id="loginButton" type="button">进入控制台</button>
+        <button id="loginGuest" type="button" class="secondary">先浏览</button>
+      </div>
+      <p id="loginMessage" class="mini-note">登录后会保存在当前浏览器，可随时退出或切换。</p>
+    </section>
+  </div>
+
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-brand">
@@ -151,6 +172,7 @@ function htmlPage(config) {
           <div class="token-box">
             <input id="adminToken" type="password" placeholder="管理员密钥">
             <button id="saveToken">保存</button>
+            <button id="logoutToken" class="secondary">退出</button>
           </div>
           <div id="adminState" class="mini-note">未保存管理员密钥</div>
           <div id="runtimeStatus" class="mini-note">前端脚本加载中</div>
@@ -759,6 +781,11 @@ function htmlPage(config) {
       }
       function bindFallback() {
         var tokenInput = qs('#adminToken');
+        var loginOverlay = qs('#loginOverlay');
+        var loginInput = qs('#loginToken');
+        var loginButton = qs('#loginButton');
+        var loginGuest = qs('#loginGuest');
+        var logoutToken = qs('#logoutToken');
         var saveToken = qs('#saveToken');
         var fileInput = qs('#fileInput');
         var gallery = qs('#gallery');
@@ -778,15 +805,55 @@ function htmlPage(config) {
         var savedToken = '';
         try { savedToken = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
         if (tokenInput && savedToken) tokenInput.value = savedToken;
+        if (loginInput && savedToken) loginInput.value = savedToken;
+        function syncLoginOverlay() {
+          var token = '';
+          try { token = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
+          if (loginOverlay) loginOverlay.classList.toggle('is-hidden', Boolean(token) || sessionStorage.getItem('telepic.loginDismissed') === '1');
+          if (logoutToken) logoutToken.disabled = !token;
+        }
+        syncLoginOverlay();
         if (saveToken && tokenInput) {
           saveToken.addEventListener('click', function () {
             try { localStorage.setItem('telepic.adminToken', tokenInput.value.trim()); } catch (error) {}
             var adminState = qs('#adminState');
-            if (adminState) adminState.textContent = tokenInput.value.trim() ? '管理员密钥已保存到本地浏览器' : '未保存管理员密钥';
+            if (adminState) adminState.textContent = tokenInput.value.trim() ? '管理员已登录，本地浏览器已保存' : '未登录管理员';
+            syncLoginOverlay();
             loadConfig();
             loadStats();
             loadImages();
             setRuntime('基础交互已响应');
+          });
+        }
+        if (loginButton && loginInput) {
+          loginButton.addEventListener('click', function () {
+            var token = loginInput.value.trim();
+            if (!token) return;
+            try { localStorage.setItem('telepic.adminToken', token); sessionStorage.removeItem('telepic.loginDismissed'); } catch (error) {}
+            if (tokenInput) tokenInput.value = token;
+            syncLoginOverlay();
+            loadConfig();
+            loadStats();
+            loadImages();
+            setRuntime('管理员登录成功');
+          });
+        }
+        if (loginGuest) {
+          loginGuest.addEventListener('click', function () {
+            try { sessionStorage.setItem('telepic.loginDismissed', '1'); } catch (error) {}
+            syncLoginOverlay();
+          });
+        }
+        if (logoutToken) {
+          logoutToken.addEventListener('click', function () {
+            try { localStorage.removeItem('telepic.adminToken'); sessionStorage.removeItem('telepic.loginDismissed'); } catch (error) {}
+            if (tokenInput) tokenInput.value = '';
+            if (loginInput) loginInput.value = '';
+            syncLoginOverlay();
+            loadConfig();
+            loadStats();
+            loadImages();
+            setRuntime('已退出管理员登录');
           });
         }
         if (fileInput) {

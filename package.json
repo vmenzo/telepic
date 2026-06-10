@@ -1,0 +1,21 @@
+{
+  "name": "telepic",
+  "version": "0.1.0",
+  "description": "A self-hosted open source image hosting service with Telegram Bot management.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "set-telegram-webhook": "node scripts/set-telegram-webhook.js"
+  },
+  "keywords": [
+    "image-hosting",
+    "telegram-bot",
+    "self-hosted",
+    "oss"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

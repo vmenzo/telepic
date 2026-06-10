@@ -1,0 +1,57 @@
+const fs = require('fs');
+const path = require('path');
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+    const index = trimmed.indexOf('=');
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim().replace(/^"|"$/g, '');
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvFile(path.resolve(process.cwd(), '.env'));
+
+const rootDir = path.resolve(process.cwd());
+const dataDir = path.resolve(rootDir, process.env.DATA_DIR || './data');
+
+function bool(value, fallback) {
+  if (value === undefined || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function csv(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+module.exports = {
+  rootDir,
+  dataDir,
+  uploadDir: path.join(dataDir, 'uploads'),
+  storageDriver: process.env.STORAGE_DRIVER || 'local',
+  s3Bucket: process.env.S3_BUCKET || '',
+  s3Region: process.env.S3_REGION || 'auto',
+  s3Endpoint: process.env.S3_ENDPOINT || '',
+  s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+  s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+  s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || '',
+  s3Prefix: process.env.S3_PREFIX || '',
+  s3ForcePathStyle: bool(process.env.S3_FORCE_PATH_STYLE, process.env.S3_ENDPOINT ? true : false),
+  port: Number(process.env.PORT || 8787),
+  host: process.env.HOST || '127.0.0.1',
+  publicUrl: (process.env.PUBLIC_URL || 'http://127.0.0.1:8787').replace(/\/$/, ''),
+  adminToken: process.env.ADMIN_TOKEN || 'change-me-to-a-long-random-secret',
+  publicUpload: bool(process.env.PUBLIC_UPLOAD, false),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || 'change-me-webhook-secret',
+  telegramAllowedUserIds: csv(process.env.TELEGRAM_ALLOWED_USER_IDS),
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024)
+};

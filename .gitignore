@@ -1,0 +1,10 @@
+data/
+uploads/
+.env
+*.log
+node_modules/
+work/
+tools/
+outputs/
+*.pid
+*.tmp

@@ -1,0 +1,420 @@
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+const { URL } = require('url');
+
+const config = require('./config');
+const { requireAdmin, requireManage, requireUpload } = require('./auth');
+const { JsonDb } = require('./db');
+const { parseMultipartRequest } = require('./multipart');
+const { createStorage } = require('./storage');
+const { handleTelegramUpdate } = require('./telegram');
+const { htmlPage, imagePage } = require('./web');
+const { isImageMime, json, parseJsonBody, text } = require('./utils');
+
+const db = new JsonDb(path.join(config.dataDir, 'db.json'));
+const storage = createStorage(config);
+
+db.load();
+storage.ensure();
+
+const publicDir = path.join(config.rootDir, 'public');
+
+const server = http.createServer((req, res) => {
+  route(req, res).catch((error) => {
+    const status = error.statusCode || 500;
+    if (status >= 500) console.error(error);
+    json(res, status, { error: error.message || 'Internal server error' });
+  });
+});
+
+async function route(req, res) {
+  const url = new URL(req.url, config.publicUrl);
+  const pathname = decodeURIComponent(url.pathname);
+
+  if (req.method === 'GET' && pathname === '/') {
+    return sendHtml(res, htmlPage(config));
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/assets/')) {
+    return serveStatic(res, pathname.replace('/assets/', ''));
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/raw/')) {
+    return serveImageFile(req, res, pathname.split('/')[2]);
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/i/')) {
+    const image = db.getImage(pathname.split('/')[2]);
+    if (!image) return json(res, 404, { error: 'Image not found' });
+    if (image.visibility === 'private' && !hasManageAccess(req, url)) {
+      return json(res, 403, { error: 'Private image requires management permission' });
+    }
+    return sendHtml(res, imagePage(image, config, url.searchParams.get('token') || ''));
+  }
+
+  if (req.method === 'GET' && pathname === '/api/stats') {
+    return json(res, 200, db.stats());
+  }
+
+  if (req.method === 'GET' && pathname === '/api/images') {
+    const admin = requireAdmin(req, config);
+    const limit = clamp(Number(url.searchParams.get('limit') || 50), 1, 200);
+    const offset = clamp(Number(url.searchParams.get('offset') || 0), 0, Number.MAX_SAFE_INTEGER);
+    const visibility = url.searchParams.get('visibility') || '';
+    const source = url.searchParams.get('source') || '';
+    const tag = url.searchParams.get('tag') || '';
+    const q = url.searchParams.get('q') || '';
+    const sort = url.searchParams.get('sort') || 'newest';
+    return json(res, 200, {
+      images: db.listImages({ limit, offset, includePrivate: admin, visibility, source, tag, q, sort }).map(publicImage)
+    });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/upload') {
+    const auth = requireUpload(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const image = await uploadFromRequest(req, auth.actor);
+    return json(res, 201, { image: publicImage(image) });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/upload-from-url') {
+    const auth = requireUpload(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 32 * 1024);
+    const image = await uploadFromUrl(body.url, auth.actor);
+    return json(res, 201, { image: publicImage(image) });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/events') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const limit = clamp(Number(url.searchParams.get('limit') || 20), 1, 100);
+    return json(res, 200, { events: db.listEvents({ limit }) });
+  }
+
+  if (req.method === 'GET' && /^\/api\/images\/[^/]+$/.test(pathname)) {
+    const id = pathname.split('/')[3];
+    const image = db.getImage(id);
+    if (!image) return json(res, 404, { error: 'Image not found' });
+    if (image.visibility === 'private' && !requireManage(req, db, config).ok) {
+      return json(res, 403, { error: 'Private image metadata requires management permission' });
+    }
+    return json(res, 200, { image: publicImage(image) });
+  }
+
+  if (req.method === 'PATCH' && pathname.startsWith('/api/images/')) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const id = pathname.split('/')[3];
+    const body = await parseJsonBody(req, 64 * 1024);
+    const patch = {};
+    if (['public', 'private'].includes(body.visibility)) patch.visibility = body.visibility;
+    if (typeof body.originalName === 'string') patch.originalName = body.originalName.slice(0, 200);
+    if (Array.isArray(body.tags) || typeof body.tags === 'string') patch.tags = normalizeTags(body.tags);
+    const image = db.updateImage(id, patch);
+    if (!image) return json(res, 404, { error: 'Image not found' });
+    return json(res, 200, { image: publicImage(image) });
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/images/')) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const id = pathname.split('/')[3];
+    const image = db.deleteImage(id);
+    if (!image) return json(res, 404, { error: 'Image not found' });
+    await storage.delete(image);
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/images/bulk-delete') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 256 * 1024);
+    const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
+    const deleted = [];
+    const missing = [];
+    for (const id of ids) {
+      const image = db.deleteImage(String(id));
+      if (image) {
+        await storage.delete(image);
+        deleted.push(id);
+      } else {
+        missing.push(id);
+      }
+    }
+    return json(res, 200, { ok: true, deleted, missing });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/images/bulk-update') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 256 * 1024);
+    const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
+    const patch = {};
+    if (['public', 'private'].includes(body.visibility)) patch.visibility = body.visibility;
+    if (Array.isArray(body.tags) || typeof body.tags === 'string') patch.tags = normalizeTags(body.tags);
+    const updated = [];
+    const missing = [];
+    for (const id of ids) {
+      const image = db.updateImage(String(id), patch);
+      if (image) {
+        updated.push(publicImage(image));
+      } else {
+        missing.push(id);
+      }
+    }
+    return json(res, 200, { ok: true, updated, missing });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/config') {
+    return json(res, 200, {
+      publicUrl: config.publicUrl,
+      publicUpload: config.publicUpload,
+      telegramEnabled: Boolean(config.telegramBotToken),
+      telegramAllowedUsersConfigured: config.telegramAllowedUserIds.length > 0,
+      telegramWebhookUrl: `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`,
+      storageDriver: config.storageDriver,
+      s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey),
+      s3Bucket: config.s3Bucket || '',
+      s3PublicBaseUrl: config.s3PublicBaseUrl || '',
+      maxUploadBytes: config.maxUploadBytes
+    });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/tokens') {
+    if (!requireAdmin(req, config)) return json(res, 401, { error: 'Admin token required' });
+    return json(res, 200, { tokens: db.listTokens() });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/tokens') {
+    if (!requireAdmin(req, config)) return json(res, 401, { error: 'Admin token required' });
+    const body = await parseJsonBody(req, 64 * 1024);
+    const created = db.createToken({ name: body.name, scopes: body.scopes });
+    return json(res, 201, created);
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/tokens/')) {
+    if (!requireAdmin(req, config)) return json(res, 401, { error: 'Admin token required' });
+    const token = db.deleteToken(pathname.split('/')[3]);
+    if (!token) return json(res, 404, { error: 'Token not found' });
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathname === `/telegram/${config.telegramWebhookSecret}`) {
+    if (!config.telegramBotToken) return json(res, 503, { error: 'Telegram bot token is not configured' });
+    const update = await parseJsonBody(req, config.maxUploadBytes);
+    await handleTelegramUpdate({ update, config, db, storage });
+    return json(res, 200, { ok: true });
+  }
+
+  return json(res, 404, { error: 'Not found' });
+}
+
+async function uploadFromRequest(req, actor) {
+  const contentType = req.headers['content-type'] || '';
+  let file;
+
+  if (contentType.startsWith('multipart/form-data')) {
+    const parts = await parseMultipartRequest(req, config.maxUploadBytes);
+    file = parts.find((part) => part.filename && part.name === 'image') || parts.find((part) => part.filename);
+  } else if (contentType.startsWith('image/')) {
+    const { readBody } = require('./utils');
+    const buffer = await readBody(req, config.maxUploadBytes);
+    file = {
+      filename: decodeHeaderFileName(req.headers['x-file-name'] || 'upload'),
+      mime: contentType.split(';')[0],
+      data: buffer
+    };
+  } else {
+    const error = new Error('Use multipart/form-data with an image field, or send a raw image/* body.');
+    error.statusCode = 415;
+    throw error;
+  }
+
+  if (!file || !file.data || !file.data.length) {
+    const error = new Error('No image file found');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!isImageMime(file.mime)) {
+    const error = new Error(`Unsupported image type: ${file.mime}`);
+    error.statusCode = 415;
+    throw error;
+  }
+
+  const image = await storage.saveImage({
+    buffer: file.data,
+    mime: file.mime,
+    originalName: file.filename,
+    source: 'api',
+    owner: actor
+  });
+  image.url = `${config.publicUrl}/i/${image.id}`;
+  image.rawUrl = `${config.publicUrl}/raw/${image.id}`;
+  db.addImage(image);
+  return image;
+}
+
+async function uploadFromUrl(rawUrl, actor) {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    const error = new Error('A valid image URL is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    const error = new Error('Invalid URL.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    const error = new Error('Only http and https URLs are supported.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const response = await fetch(parsed, {
+    redirect: 'follow',
+    headers: { 'user-agent': 'Telepic/0.1' }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Remote download failed: ${response.status}`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const mime = (response.headers.get('content-type') || '').split(';')[0].trim();
+  if (!isImageMime(mime)) {
+    const error = new Error(`Remote file is not a supported image: ${mime || 'unknown'}`);
+    error.statusCode = 415;
+    throw error;
+  }
+
+  const contentLength = Number(response.headers.get('content-length') || 0);
+  if (contentLength && contentLength > config.maxUploadBytes) {
+    const error = new Error('Remote image is too large.');
+    error.statusCode = 413;
+    throw error;
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > config.maxUploadBytes) {
+    const error = new Error('Remote image is too large.');
+    error.statusCode = 413;
+    throw error;
+  }
+
+  const fileName = decodeURIComponent(parsed.pathname.split('/').pop() || 'remote-image');
+  const image = await storage.saveImage({
+    buffer,
+    mime,
+    originalName: fileName,
+    source: 'url',
+    owner: actor
+  });
+  image.url = `${config.publicUrl}/i/${image.id}`;
+  image.rawUrl = `${config.publicUrl}/raw/${image.id}`;
+  db.addImage(image);
+  return image;
+}
+
+function publicImage(image) {
+  const fallbackRawUrl = image.rawUrl || `${config.publicUrl}/raw/${image.id}`;
+  const storageRawUrl = typeof storage.getPublicObjectUrl === 'function' ? storage.getPublicObjectUrl(image) : '';
+  return {
+    id: image.id,
+    originalName: image.originalName,
+    mime: image.mime,
+    size: image.size,
+    sha256: image.sha256,
+    source: image.source,
+    owner: image.owner,
+    tags: image.tags || [],
+    visibility: image.visibility,
+    createdAt: image.createdAt,
+    updatedAt: image.updatedAt,
+    url: image.url || `${config.publicUrl}/i/${image.id}`,
+    rawUrl: image.visibility === 'private' ? fallbackRawUrl : (storageRawUrl || fallbackRawUrl),
+    appRawUrl: fallbackRawUrl,
+    storageKey: image.storageKey || image.fileName
+  };
+}
+
+async function serveImageFile(req, res, id) {
+  const image = db.getImage(id);
+  if (!image) return json(res, 404, { error: 'Image not found' });
+  const url = new URL(req.url, config.publicUrl);
+  if (image.visibility === 'private' && !hasManageAccess(req, url)) {
+    return json(res, 403, { error: 'Private image requires management permission' });
+  }
+  let stored;
+  try {
+    stored = await storage.read(image);
+  } catch (error) {
+    const status = /404/.test(String(error.message)) ? 404 : 502;
+    return json(res, status, { error: status === 404 ? 'Image file missing' : error.message });
+  }
+  res.writeHead(200, {
+    'content-type': stored.mime || image.mime,
+    'cache-control': 'public, max-age=31536000, immutable'
+  });
+  res.end(stored.buffer);
+}
+
+function serveStatic(res, name) {
+  const safeName = path.basename(name);
+  const filePath = path.join(publicDir, safeName);
+  if (!fs.existsSync(filePath)) return text(res, 404, 'Not found');
+  const ext = path.extname(filePath);
+  const mime = ext === '.css' ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
+  res.writeHead(200, { 'content-type': mime });
+  fs.createReadStream(filePath).pipe(res);
+}
+
+function sendHtml(res, body) {
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.end(body);
+}
+
+function clamp(value, min, max) {
+  if (Number.isNaN(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeTags(input) {
+  const list = Array.isArray(input) ? input : String(input || '').split(',');
+  return [...new Set(list.map((item) => String(item).trim()).filter(Boolean).slice(0, 20))];
+}
+
+function decodeHeaderFileName(value) {
+  try {
+    return decodeURIComponent(String(value || 'upload'));
+  } catch {
+    return String(value || 'upload');
+  }
+}
+
+function hasManageAccess(req, url) {
+  if (requireManage(req, db, config).ok) return true;
+  const queryToken = url.searchParams.get('token') || '';
+  if (!queryToken) return false;
+  if (config.adminToken && queryToken === config.adminToken) return true;
+  const token = db.findToken(queryToken);
+  if (token && token.scopes.includes('manage')) {
+    db.touchToken(token.id);
+    return true;
+  }
+  return false;
+}
+
+server.listen(config.port, config.host, () => {
+  console.log(`Telepic is running at http://${config.host}:${config.port}`);
+  console.log(`Public URL: ${config.publicUrl}`);
+});

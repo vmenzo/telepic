@@ -1135,7 +1135,7 @@ function htmlPage(config) {
           if (window.TELEPIC_APP_READY) return;
           setRuntime(window.TELEPIC_APP_ERROR ? ('主脚本失败，已启用兼容模式：' + window.TELEPIC_APP_ERROR) : '已启用兼容模式');
           bindFallback();
-        }, 260);
+        }, 1200);
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', bootFallbackIfNeeded);

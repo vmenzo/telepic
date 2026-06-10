@@ -1,31 +1,3 @@
-const state = {
-  adminToken: localStorage.getItem('telepic.adminToken') || '',
-  adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
-  images: [],
-  selected: new Set(),
-  config: {},
-  stats: {
-    images: 0,
-    publicImages: 0,
-    privateImages: 0,
-    totalBytes: 0,
-    averageBytes: 0,
-    latestImageAt: null,
-    oldestImageAt: null,
-    largestImage: null,
-    mimeBreakdown: {},
-    tagBreakdown: {},
-    ownerBreakdown: {},
-    tokens: 0,
-    sourceBreakdown: {}
-  },
-  activeImageId: null,
-  uploadHistory: [],
-  theme: loadTheme(),
-  inspectorPane: 'detail',
-  loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
-};
-
 const THEME_PRESETS = {
   gallery: {
     label: '艺廊白',
@@ -101,6 +73,36 @@ const THEME_PRESETS = {
   }
 };
 
+const DEFAULT_STATS = {
+  images: 0,
+  publicImages: 0,
+  privateImages: 0,
+  totalBytes: 0,
+  averageBytes: 0,
+  latestImageAt: null,
+  oldestImageAt: null,
+  largestImage: null,
+  mimeBreakdown: {},
+  tagBreakdown: {},
+  ownerBreakdown: {},
+  tokens: 0,
+  sourceBreakdown: {}
+};
+
+const state = {
+  adminToken: localStorage.getItem('telepic.adminToken') || '',
+  adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
+  images: [],
+  selected: new Set(),
+  config: {},
+  stats: { ...DEFAULT_STATS },
+  activeImageId: null,
+  uploadHistory: [],
+  theme: loadTheme(),
+  inspectorPane: 'detail',
+  loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
+};
+
 const $ = (selector) => document.querySelector(selector);
 const on = (selector, event, handler) => {
   const element = $(selector);
@@ -125,6 +127,10 @@ try {
   bindEvents();
   hydrateSession();
   initTheme();
+  renderVisibilityChart();
+  renderSourceChart();
+  renderBreakdownCharts();
+  renderStatusOverview();
   loadServerTheme().catch(function (error) {
     setThemeStorageState('云端主题读取失败');
     setRuntimeStatus('云端主题读取失败：' + error.message);
@@ -263,6 +269,9 @@ function dismissLogin() {
 function persistAdminToken(token) {
   if (token) {
     localStorage.setItem('telepic.adminToken', token);
+    if (state.config && state.config.adminAuthenticated === false) {
+      delete state.config.adminAuthenticated;
+    }
   } else {
     localStorage.removeItem('telepic.adminToken');
   }
@@ -273,13 +282,17 @@ function persistAdminToken(token) {
 
 function syncAdminState() {
   const loggedIn = Boolean(state.adminToken);
+  const sessionExpired = loggedIn && state.config && state.config.adminAuthenticated === false;
   const overlay = $('#loginOverlay');
   const logout = $('#logoutToken');
-  $('#adminState').textContent = loggedIn ? '管理员已登录，本地浏览器已保存' : '未登录管理员';
+  $('#adminState').textContent = sessionExpired
+    ? '登录已失效，请重新登录'
+    : (loggedIn ? '管理员已登录，本地浏览器已保存' : '未登录管理员');
   if (logout) logout.disabled = !loggedIn;
   if (overlay) {
-    overlay.classList.toggle('is-hidden', loggedIn || state.loginDismissed);
-    overlay.setAttribute('aria-hidden', loggedIn || state.loginDismissed ? 'true' : 'false');
+    const hideOverlay = (loggedIn && !sessionExpired) || state.loginDismissed;
+    overlay.classList.toggle('is-hidden', hideOverlay);
+    overlay.setAttribute('aria-hidden', hideOverlay ? 'true' : 'false');
   }
   syncUploadGate();
 }
@@ -343,7 +356,18 @@ async function uploadFiles(files) {
 }
 
 async function refresh() {
-  await Promise.all([refreshConfig(), refreshStats(), refreshImages(), refreshTokens(), refreshEvents()]);
+  const tasks = [
+    refreshConfig(),
+    refreshStats(),
+    refreshImages(),
+    refreshTokens(),
+    refreshEvents()
+  ];
+  const results = await Promise.allSettled(tasks);
+  const failed = results.filter((result) => result.status === 'rejected');
+  if (failed.length) {
+    setRuntimeStatus(`刷新完成，${failed.length} 个模块需要重试`);
+  }
   renderApiExample();
   renderBatchTagSummary();
 }
@@ -351,6 +375,7 @@ async function refresh() {
 async function refreshConfig() {
   try {
     state.config = await request('/api/config');
+    syncAdminState();
     $('#statTelegram').textContent = state.config.telegramEnabled ? '已启用' : '未启用';
     $('#statDatabase').textContent = state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON';
     $('#statStorage').textContent = state.config.storageDriver === 's3' ? 'S3/R2' : '本地';
@@ -401,6 +426,7 @@ async function refreshConfig() {
   } catch (error) {
     $('#telegramHint').textContent = error.message;
     $('#systemConfig').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+    renderStatusOverview();
   }
 }
 
@@ -431,18 +457,24 @@ function syncUploadGate() {
 async function refreshStats() {
   try {
     const stats = await request('/api/stats');
-    state.stats = stats;
-    $('#statImages').textContent = stats.images;
-    $('#statPublic').textContent = stats.publicImages;
-    $('#statPrivate').textContent = stats.privateImages;
-    $('#statBytes').textContent = formatBytes(stats.totalBytes);
-    $('#statTokens').textContent = stats.tokens;
-    $('#sourceSummary').textContent = renderSourceSummary(stats.sourceBreakdown);
+    state.stats = { ...DEFAULT_STATS, ...stats };
+    $('#statImages').textContent = state.stats.images;
+    $('#statPublic').textContent = state.stats.publicImages;
+    $('#statPrivate').textContent = state.stats.privateImages;
+    $('#statBytes').textContent = formatBytes(state.stats.totalBytes);
+    $('#statTokens').textContent = state.stats.tokens;
+    $('#sourceSummary').textContent = renderSourceSummary(state.stats.sourceBreakdown);
     renderVisibilityChart();
     renderSourceChart();
     renderBreakdownCharts();
     renderStatusOverview();
   } catch (error) {
+    state.stats = { ...DEFAULT_STATS };
+    renderVisibilityChart();
+    renderSourceChart();
+    renderBreakdownCharts();
+    renderStatusOverview();
+    $('#sourceSummary').textContent = '统计读取失败';
     toast(error.message);
   }
 }
@@ -1313,15 +1345,16 @@ function setThemeStorageState(text) {
 }
 
 function normalizeTheme(theme) {
+  theme = theme && typeof theme === 'object' ? theme : {};
   const preset = theme.preset && THEME_PRESETS[theme.preset] ? theme.preset : 'custom';
   if (preset !== 'custom') return { ...theme, preset, ...THEME_PRESETS[preset], image: theme.image || '' };
   return {
     preset: 'custom',
-    bg: theme.bg || THEME_PRESETS.gallery.bg,
-    panel: theme.panel || THEME_PRESETS.gallery.panel,
-    ink: theme.ink || THEME_PRESETS.gallery.ink,
-    accent: theme.accent || THEME_PRESETS.gallery.accent,
-    danger: theme.danger || THEME_PRESETS.gallery.danger,
+    bg: normalizeColor(theme.bg, THEME_PRESETS.gallery.bg),
+    panel: normalizeColor(theme.panel, THEME_PRESETS.gallery.panel),
+    ink: normalizeColor(theme.ink, THEME_PRESETS.gallery.ink),
+    accent: normalizeColor(theme.accent, THEME_PRESETS.gallery.accent),
+    danger: normalizeColor(theme.danger, THEME_PRESETS.gallery.danger),
     backdrop: theme.backdrop || THEME_PRESETS.gallery.backdrop,
     overlay: theme.overlay || THEME_PRESETS.gallery.overlay,
     panelAlpha: theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
@@ -1356,22 +1389,11 @@ function loadTheme() {
     const raw = localStorage.getItem('telepic.theme');
     if (!raw) return { preset: 'gallery', ...THEME_PRESETS.gallery };
     const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { preset: 'gallery', ...THEME_PRESETS.gallery };
     if (parsed.preset && THEME_PRESETS[parsed.preset] && parsed.preset !== 'custom') {
       return { ...parsed, preset: parsed.preset, ...THEME_PRESETS[parsed.preset], image: parsed.image || '' };
     }
-    return {
-      preset: 'custom',
-      bg: parsed.bg || THEME_PRESETS.gallery.bg,
-      panel: parsed.panel || THEME_PRESETS.gallery.panel,
-      ink: parsed.ink || THEME_PRESETS.gallery.ink,
-      accent: parsed.accent || THEME_PRESETS.gallery.accent,
-      danger: parsed.danger || THEME_PRESETS.gallery.danger,
-      backdrop: parsed.backdrop || THEME_PRESETS.gallery.backdrop,
-      overlay: parsed.overlay || THEME_PRESETS.gallery.overlay,
-      panelAlpha: parsed.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
-      blur: parsed.blur || THEME_PRESETS.gallery.blur,
-      image: parsed.image || ''
-    };
+    return normalizeTheme(parsed);
   } catch {
     return { preset: 'gallery', ...THEME_PRESETS.gallery };
   }
@@ -1559,8 +1581,12 @@ function mixColor(foreground, background, ratio) {
   });
 }
 
+function normalizeColor(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
+}
+
 function hexToRgb(hex) {
-  const value = hex.replace('#', '');
+  const value = normalizeColor(hex, '#000000').replace('#', '');
   return {
     r: Number.parseInt(value.slice(0, 2), 16),
     g: Number.parseInt(value.slice(2, 4), 16),

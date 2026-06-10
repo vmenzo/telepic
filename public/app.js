@@ -1281,8 +1281,8 @@ function applyTheme(theme, updateState = true) {
   root.style.setProperty('--danger-soft', mixColor(theme.danger, theme.panel, 0.88));
   root.style.setProperty('--accent-strong', mixColor(theme.accent, theme.ink, 0.18));
   root.style.setProperty('--accent-contrast', luminance(theme.accent) > 0.52 ? '#102028' : '#ffffff');
-  root.style.setProperty('--panel-bg', hexToRgba(theme.panel, theme.panelAlpha || 0.88));
-  root.style.setProperty('--panel-blur', `${theme.blur || 16}px`);
+  root.style.setProperty('--panel-bg', hexToRgba(theme.panel, theme.image ? Math.min(theme.panelAlpha || 0.88, 0.68) : (theme.panelAlpha || 0.88)));
+  root.style.setProperty('--panel-blur', `${theme.image ? Math.max(theme.blur || 16, 24) : (theme.blur || 16)}px`);
   root.style.setProperty('--theme-image', theme.image ? `url("${theme.image}")` : 'none');
   root.style.setProperty('--theme-backdrop', theme.backdrop || THEME_PRESETS.gallery.backdrop);
   root.style.setProperty('--theme-overlay', theme.image
@@ -1292,6 +1292,7 @@ function applyTheme(theme, updateState = true) {
     ? '0 18px 44px rgba(0, 0, 0, 0.38)'
     : '0 16px 34px rgba(16, 24, 40, 0.10)');
   document.body.classList.toggle('theme-dark', luminance(theme.bg) < 0.35);
+  document.body.classList.toggle('theme-photo', Boolean(theme.image));
   $('#themeBadge').textContent = themeName(theme.preset);
   renderThemePreview(theme);
   syncThemeQuickPicks(theme.preset);

@@ -1495,6 +1495,54 @@ select {
   --shadow-strong: 0 24px 62px rgba(0, 0, 0, 0.44);
 }
 
+body.theme-photo .sidebar,
+body.theme-photo .topbar,
+body.theme-photo .metric-card,
+body.theme-photo .dashboard-panel,
+body.theme-photo .side-panel,
+body.theme-photo .library-shell,
+body.theme-photo .inspector-shell,
+body.theme-photo .flash-bar,
+body.theme-photo .login-card {
+  background: var(--panel-bg);
+  backdrop-filter: blur(var(--panel-blur)) saturate(1.14);
+}
+
+body.theme-photo .dashboard-panel-accent {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--soft) 54%, transparent), transparent),
+    var(--panel-bg);
+}
+
+body.theme-photo .filter-bar,
+body.theme-photo .asset-table-head,
+body.theme-photo .selection-bar,
+body.theme-photo .batch-row,
+body.theme-photo .inspector-tabs,
+body.theme-photo .inspector-pane,
+body.theme-photo .config-row,
+body.theme-photo .detail-panel,
+body.theme-photo .token-card,
+body.theme-photo .event-item,
+body.theme-photo .dropzone,
+body.theme-photo .background-picker,
+body.theme-photo .password-panel,
+body.theme-photo .api-panel,
+body.theme-photo .empty-state {
+  background: color-mix(in srgb, var(--panel) 58%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+body.theme-photo input,
+body.theme-photo select,
+body.theme-photo button.secondary,
+body.theme-photo .mono-box,
+body.theme-photo .result-box,
+body.theme-photo .command-list code,
+body.theme-photo .checkline {
+  background: color-mix(in srgb, var(--panel) 68%, transparent);
+}
+
 @keyframes flashPulse {
   0% {
     border-color: var(--accent);

@@ -162,7 +162,7 @@ function htmlPage(config) {
           </label>
           <div class="actions actions-split">
             <button id="clearThemeBackground" class="secondary">移除背景图</button>
-            <button id="themeBackgroundHint" class="secondary" type="button" disabled>本地保存</button>
+            <span id="themeStorageState" class="badge">本地预览</span>
           </div>
           <div id="themePreview" class="theme-preview"></div>
         </div>

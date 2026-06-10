@@ -58,6 +58,23 @@ async function route(req, res) {
     return json(res, 200, db.stats());
   }
 
+  if (req.method === 'GET' && pathname === '/api/settings/theme') {
+    const settings = readSettings();
+    return json(res, 200, { theme: settings.theme || null });
+  }
+
+  if (req.method === 'PUT' && pathname === '/api/settings/theme') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 3 * 1024 * 1024);
+    const settings = readSettings();
+    settings.theme = sanitizeTheme(body.theme || {});
+    settings.updatedAt = new Date().toISOString();
+    writeSettings(settings);
+    db.addEvent('settings.theme.updated', { actor: auth.actor });
+    return json(res, 200, { ok: true, theme: settings.theme, updatedAt: settings.updatedAt });
+  }
+
   if (req.method === 'POST' && pathname === '/api/login') {
     const body = await parseJsonBody(req, 16 * 1024);
     if (!verifyAdminLogin(body.username, body.password, config)) {
@@ -209,6 +226,13 @@ async function route(req, res) {
       adminAuthenticated: admin,
       adminUsername: config.adminUsername,
       adminSessionHours: config.adminSessionHours,
+      serverTime: new Date().toISOString(),
+      checks: {
+        api: true,
+        database: true,
+        storage: true,
+        themeSettings: fs.existsSync(settingsPath())
+      },
       databaseDriver: config.databaseDriver,
       databaseFile: admin ? config.databaseFile : '',
       dataDir: admin ? config.dataDir : '',
@@ -457,6 +481,37 @@ function updateEnvValue(filePath, key, value) {
   });
   if (!replaced) next.push(line);
   fs.writeFileSync(filePath, next.join('\n').replace(/\n*$/, '\n'));
+}
+
+function settingsPath() {
+  return path.join(config.dataDir, 'settings.json');
+}
+
+function readSettings() {
+  const filePath = settingsPath();
+  if (!fs.existsSync(filePath)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(settings) {
+  const filePath = settingsPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
+}
+
+function sanitizeTheme(theme) {
+  const stringFields = ['preset', 'bg', 'panel', 'ink', 'accent', 'danger', 'backdrop', 'overlay', 'image'];
+  const clean = {};
+  for (const field of stringFields) {
+    if (typeof theme[field] === 'string') clean[field] = theme[field].slice(0, field === 'image' ? 2_800_000 : 4000);
+  }
+  clean.panelAlpha = clamp(Number(theme.panelAlpha || 0.88), 0.55, 1);
+  clean.blur = clamp(Number(theme.blur || 18), 0, 40);
+  return clean;
 }
 
 function escapeEnvValue(value) {

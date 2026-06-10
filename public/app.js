@@ -125,6 +125,10 @@ try {
   bindEvents();
   hydrateSession();
   initTheme();
+  loadServerTheme().catch(function (error) {
+    setThemeStorageState('云端主题读取失败');
+    setRuntimeStatus('云端主题读取失败：' + error.message);
+  });
   refresh().catch(function (error) {
     setRuntimeStatus('刷新失败：' + error.message);
   });
@@ -365,6 +369,12 @@ async function refreshConfig() {
       configRow('应用版本', `${state.config.appName || 'telepic'} ${state.config.appVersion || ''}`.trim()),
       configRow('Node / 平台', `${state.config.nodeVersion || '未知'} · ${state.config.platform || '未知'}`),
       configRow('监听地址', `${state.config.host || '0.0.0.0'}:${state.config.port || ''}`),
+      configRow('服务器时间', state.config.serverTime ? formatDate(state.config.serverTime) : '未知'),
+      configRow('接口状态', state.config.checks && state.config.checks.api ? '正常' : '未检测到'),
+      configRow('数据库检测', state.config.checks && state.config.checks.database ? '正常' : '未检测到'),
+      configRow('存储检测', state.config.checks && state.config.checks.storage ? '正常' : '未检测到'),
+      configRow('主题云端配置', state.config.checks && state.config.checks.themeSettings ? '已保存' : '未保存'),
+      configRow('管理员状态', state.config.adminAuthenticated ? '已登录，显示完整信息' : '未登录，仅显示公开信息'),
       configRow('公开地址', state.config.publicUrl),
       configRow('数据库驱动', state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON'),
       configRow('数据库文件', state.config.databaseFile || (state.config.adminAuthenticated ? '未设置' : '管理员授权后显示')),
@@ -1137,7 +1147,7 @@ function applyPresetTheme(preset) {
   persistTheme();
 }
 
-function saveThemeFromInputs() {
+async function saveThemeFromInputs() {
   state.theme = {
     preset: 'custom',
     bg: $('#themeBg').value,
@@ -1155,7 +1165,7 @@ function saveThemeFromInputs() {
   syncThemeQuickPicks('custom');
   persistTheme();
   $('#themePreset').value = 'custom';
-  toast('主题已保存');
+  await saveThemeToCloud();
 }
 
 function resetThemePreset() {
@@ -1206,7 +1216,8 @@ function handleThemeBackgroundUpload(event) {
     syncThemeQuickPicks('custom');
     persistTheme();
     $('#themePreset').value = 'custom';
-    toast('背景图片已应用');
+    setThemeStorageState('背景图待保存');
+    toast('背景图片已应用，点击保存主题同步到云端');
   };
   reader.onerror = () => toast('背景图片读取失败');
   reader.readAsDataURL(file);
@@ -1218,7 +1229,8 @@ function clearThemeBackground() {
   persistTheme();
   const input = $('#themeBackgroundFile');
   if (input) input.value = '';
-  toast('背景图片已移除');
+  setThemeStorageState('背景图待保存');
+  toast('背景图片已移除，点击保存主题同步到云端');
 }
 
 function applyTheme(theme, updateState = true) {
@@ -1257,12 +1269,65 @@ function syncThemeInputs(theme) {
   $('#themeInk').value = theme.ink;
   $('#themeAccent').value = theme.accent;
   $('#themeDanger').value = theme.danger;
-  const hint = $('#themeBackgroundHint');
-  if (hint) hint.textContent = theme.image ? '已设置背景图' : '本地保存';
+  setThemeStorageState(theme.image ? '已设置背景图' : '预设背景');
 }
 
 function persistTheme() {
   localStorage.setItem('telepic.theme', JSON.stringify(state.theme));
+}
+
+async function loadServerTheme() {
+  const data = await request('/api/settings/theme');
+  if (!data.theme) {
+    setThemeStorageState('暂无云端主题');
+    return;
+  }
+  state.theme = normalizeTheme(data.theme);
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
+  persistTheme();
+  setThemeStorageState('云端主题已加载');
+}
+
+async function saveThemeToCloud() {
+  if (!state.adminToken) {
+    setThemeStorageState('登录后可云端保存');
+    toast('请先登录管理员账号再保存到云端');
+    return;
+  }
+  const data = await request('/api/settings/theme', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ theme: state.theme })
+  });
+  state.theme = normalizeTheme(data.theme || state.theme);
+  persistTheme();
+  setThemeStorageState('已云端保存');
+  toast('主题已保存到云端');
+}
+
+function setThemeStorageState(text) {
+  const el = $('#themeStorageState');
+  if (el) el.textContent = text;
+}
+
+function normalizeTheme(theme) {
+  const preset = theme.preset && THEME_PRESETS[theme.preset] ? theme.preset : 'custom';
+  if (preset !== 'custom') return { ...theme, preset, ...THEME_PRESETS[preset], image: theme.image || '' };
+  return {
+    preset: 'custom',
+    bg: theme.bg || THEME_PRESETS.gallery.bg,
+    panel: theme.panel || THEME_PRESETS.gallery.panel,
+    ink: theme.ink || THEME_PRESETS.gallery.ink,
+    accent: theme.accent || THEME_PRESETS.gallery.accent,
+    danger: theme.danger || THEME_PRESETS.gallery.danger,
+    backdrop: theme.backdrop || THEME_PRESETS.gallery.backdrop,
+    overlay: theme.overlay || THEME_PRESETS.gallery.overlay,
+    panelAlpha: theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
+    blur: theme.blur || THEME_PRESETS.gallery.blur,
+    image: theme.image || ''
+  };
 }
 
 function syncThemeQuickPicks(preset) {

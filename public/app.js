@@ -129,6 +129,7 @@ function bindEvents() {
   on('#bulkPublic', 'click', () => bulkUpdate({ visibility: 'public' }, '已批量设为公开'));
   on('#bulkPrivate', 'click', () => bulkUpdate({ visibility: 'private' }, '已批量设为私有'));
   on('#createToken', 'click', createToken);
+  on('#changePassword', 'click', changeAdminPassword);
   on('#searchInput', 'input', debounce(refreshImages, 220));
   on('#tagFilter', 'input', debounce(refreshImages, 220));
   on('#visibilityFilter', 'change', refreshImages);
@@ -696,6 +697,45 @@ async function createToken() {
   }
 }
 
+async function changeAdminPassword() {
+  const current = $('#currentPassword').value;
+  const next = $('#newPassword').value;
+  const confirm = $('#confirmPassword').value;
+  const result = $('#passwordResult');
+
+  if (!state.adminToken) {
+    result.textContent = '请先登录管理员账号。';
+    return;
+  }
+  if (!current || !next || !confirm) {
+    result.textContent = '请填写当前密码和新密码。';
+    return;
+  }
+  if (next.length < 8) {
+    result.textContent = '新密码至少 8 位。';
+    return;
+  }
+  if (next !== confirm) {
+    result.textContent = '两次输入的新密码不一致。';
+    return;
+  }
+
+  try {
+    await request('/api/admin/password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currentPassword: current, newPassword: next })
+    });
+    $('#currentPassword').value = '';
+    $('#newPassword').value = '';
+    $('#confirmPassword').value = '';
+    result.textContent = '密码已更新，下次登录请使用新密码。';
+    toast('管理员密码已更新');
+  } catch (error) {
+    result.textContent = error.message;
+  }
+}
+
 async function deleteToken(id) {
   await request(`/api/tokens/${id}`, { method: 'DELETE' });
   await refreshTokens();
@@ -1229,6 +1269,12 @@ function humanizeError(message) {
   }
   if (message.includes('Invalid username or password')) {
     return '用户名或密码不正确。';
+  }
+  if (message.includes('Current password is incorrect')) {
+    return '当前密码不正确。';
+  }
+  if (message.includes('New password must be between')) {
+    return '新密码长度需要在 8 到 200 个字符之间。';
   }
   return message;
 }

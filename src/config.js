@@ -14,7 +14,8 @@ function loadEnvFile(filePath) {
   }
 }
 
-loadEnvFile(path.resolve(process.cwd(), '.env'));
+const envFile = path.resolve(process.cwd(), '.env');
+loadEnvFile(envFile);
 
 const rootDir = path.resolve(process.cwd());
 const dataDir = path.resolve(rootDir, process.env.DATA_DIR || './data');
@@ -37,6 +38,7 @@ function csv(value) {
 
 module.exports = {
   rootDir,
+  envFile,
   dataDir,
   databaseDriver: process.env.DATABASE_DRIVER || 'sqlite',
   databaseFile,

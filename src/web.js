@@ -377,6 +377,30 @@ function htmlPage(config) {
               <span id="storageBadge" class="badge">检测中</span>
             </div>
             <div id="systemConfig" class="config-list"></div>
+            <div class="password-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">账号安全</p>
+                  <h2>修改管理员密码</h2>
+                </div>
+              </div>
+              <div class="password-grid">
+                <label class="field-stack">
+                  <span>当前密码</span>
+                  <input id="currentPassword" type="password" autocomplete="current-password">
+                </label>
+                <label class="field-stack">
+                  <span>新密码</span>
+                  <input id="newPassword" type="password" autocomplete="new-password">
+                </label>
+                <label class="field-stack">
+                  <span>确认新密码</span>
+                  <input id="confirmPassword" type="password" autocomplete="new-password">
+                </label>
+                <button id="changePassword" type="button">保存新密码</button>
+              </div>
+              <div id="passwordResult" class="result-box"></div>
+            </div>
             <div class="api-panel">
               <div class="panel-head compact">
                 <div>
@@ -797,6 +821,7 @@ function htmlPage(config) {
         var detail = qs('#imageDetail');
         var fetchButton = qs('#fetchUrlButton');
         var createTokenButton = qs('#createToken');
+        var changePasswordButton = qs('#changePassword');
         var refreshImagesButton = qs('#refreshImages');
         var refreshEventsButton = qs('#refreshEvents');
         var bulkPublicButton = qs('#bulkPublic');
@@ -919,6 +944,27 @@ function htmlPage(config) {
                 if (nameInput) nameInput.value = '';
                 requestJson('GET', '/api/tokens', null, function (tokenStatus, tokenData) { if (tokenStatus >= 200 && tokenStatus < 300) renderTokens(tokenData); });
                 loadStats();
+              }
+            });
+          });
+        }
+        if (changePasswordButton) {
+          changePasswordButton.addEventListener('click', function () {
+            var current = qs('#currentPassword');
+            var next = qs('#newPassword');
+            var confirm = qs('#confirmPassword');
+            var result = qs('#passwordResult');
+            if (!current || !next || !confirm) return;
+            if (!current.value || !next.value || next.value !== confirm.value) {
+              if (result) result.textContent = '请检查当前密码和新密码。';
+              return;
+            }
+            requestJson('POST', '/api/admin/password', { currentPassword: current.value, newPassword: next.value }, function (status, data) {
+              if (result) result.textContent = status >= 200 && status < 300 ? '密码已更新，下次登录请使用新密码。' : ((data && data.error) || '修改失败');
+              if (status >= 200 && status < 300) {
+                current.value = '';
+                next.value = '';
+                confirm.value = '';
               }
             });
           });

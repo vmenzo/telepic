@@ -889,6 +889,21 @@ a {
   gap: 14px;
 }
 
+.password-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 76%, var(--panel));
+}
+
+.password-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
 .theme-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -1151,6 +1166,7 @@ a {
 .theme-dark .legend-item,
 .theme-dark .status-item,
 .theme-dark .breakdown-row,
+.theme-dark .password-panel,
 .theme-dark .notice-box {
   background: color-mix(in srgb, var(--panel) 92%, var(--bg));
 }

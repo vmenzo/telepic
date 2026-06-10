@@ -66,6 +66,25 @@ async function route(req, res) {
     return json(res, 200, createAdminSession(config));
   }
 
+  if (req.method === 'POST' && pathname === '/api/admin/password') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 16 * 1024);
+    const currentPassword = String(body.currentPassword || '');
+    const newPassword = String(body.newPassword || '');
+    if (!verifyAdminLogin(config.adminUsername, currentPassword, config)) {
+      return json(res, 401, { error: 'Current password is incorrect' });
+    }
+    if (newPassword.length < 8 || newPassword.length > 200) {
+      return json(res, 400, { error: 'New password must be between 8 and 200 characters' });
+    }
+    updateEnvValue(config.envFile, 'ADMIN_PASSWORD', newPassword);
+    process.env.ADMIN_PASSWORD = newPassword;
+    config.adminPassword = newPassword;
+    db.addEvent('admin.password.updated', { actor: auth.actor });
+    return json(res, 200, { ok: true });
+  }
+
   if (req.method === 'GET' && pathname === '/api/images') {
     const admin = requireAdmin(req, config);
     const limit = clamp(Number(url.searchParams.get('limit') || 50), 1, 200);
@@ -418,6 +437,31 @@ function clamp(value, min, max) {
 function normalizeTags(input) {
   const list = Array.isArray(input) ? input : String(input || '').split(',');
   return [...new Set(list.map((item) => String(item).trim()).filter(Boolean).slice(0, 20))];
+}
+
+function updateEnvValue(filePath, key, value) {
+  const line = `${key}=${escapeEnvValue(value)}`;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, `${line}\n`);
+    return;
+  }
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+  let replaced = false;
+  const next = lines.map((item) => {
+    if (item.startsWith(`${key}=`)) {
+      replaced = true;
+      return line;
+    }
+    return item;
+  });
+  if (!replaced) next.push(line);
+  fs.writeFileSync(filePath, next.join('\n').replace(/\n*$/, '\n'));
+}
+
+function escapeEnvValue(value) {
+  const text = String(value || '');
+  return /[\s#"']/g.test(text) ? JSON.stringify(text) : text;
 }
 
 function decodeHeaderFileName(value) {

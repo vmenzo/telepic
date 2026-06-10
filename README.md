@@ -21,20 +21,27 @@ Telepic 是一个自托管图床，支持 Web 管理台、HTTP API、Telegram Bo
 curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh | sudo sh
 ```
 
-如果已经有域名，部署时传入 `PUBLIC_URL`：
+脚本会提示填写：
+
+- 安装目录
+- HTTP 端口
+- 公开地址 `PUBLIC_URL`
+- 管理员用户名
+
+如果已经确定配置，也可以通过环境变量无交互部署：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh \
-  | sudo env PUBLIC_URL=https://img.example.com sh
+  | sudo env TELEPIC_NONINTERACTIVE=1 PUBLIC_URL=https://img.example.com sh
 ```
 
-`PUBLIC_URL` 用于生成外链和 Telegram 回调地址；没有域名时可以不传，之后在 `.env` 里修改。
+`PUBLIC_URL` 用于生成外链和 Telegram webhook 地址。没有域名时可以先使用默认值，之后在 `/opt/telepic/.env` 里修改。
 
 如果使用 fork 仓库：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh \
-  | sudo env TELEPIC_REPO=https://github.com/yourname/telepic.git sh
+  | sudo env TELEPIC_REPO=https://github.com/yourname/telepic.git TELEPIC_NONINTERACTIVE=1 sh
 ```
 
 安装完成后脚本会输出：

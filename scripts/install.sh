@@ -7,6 +7,8 @@ REPO_URL="${TELEPIC_REPO:-https://github.com/vmenzo/telepic.git}"
 BRANCH="${TELEPIC_BRANCH:-main}"
 PORT="${PORT:-8787}"
 PUBLIC_URL="${PUBLIC_URL:-}"
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+TELEPIC_NONINTERACTIVE="${TELEPIC_NONINTERACTIVE:-}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -33,6 +35,33 @@ compose_cmd() {
     return
   fi
   echo ""
+}
+
+prompt_value() {
+  LABEL="$1"
+  DEFAULT_VALUE="$2"
+  if [ -n "$TELEPIC_NONINTERACTIVE" ] || [ ! -r /dev/tty ]; then
+    echo "$DEFAULT_VALUE"
+    return
+  fi
+  printf "%s [%s]: " "$LABEL" "$DEFAULT_VALUE" > /dev/tty
+  IFS= read -r ANSWER < /dev/tty || ANSWER=""
+  if [ -n "$ANSWER" ]; then
+    echo "$ANSWER"
+  else
+    echo "$DEFAULT_VALUE"
+  fi
+}
+
+default_public_url() {
+  if command -v hostname >/dev/null 2>&1; then
+    IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    if [ -n "$IP" ]; then
+      echo "http://${IP}:${PORT}"
+      return
+    fi
+  fi
+  echo "http://127.0.0.1:${PORT}"
 }
 
 package_manager() {
@@ -87,6 +116,13 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+APP_DIR="$(prompt_value "Install directory" "$APP_DIR")"
+PORT="$(prompt_value "HTTP port" "$PORT")"
+if [ -z "$PUBLIC_URL" ]; then
+  PUBLIC_URL="$(prompt_value "Public URL" "$(default_public_url)")"
+fi
+ADMIN_USERNAME="$(prompt_value "Admin username" "$ADMIN_USERNAME")"
+
 echo "==> Checking Linux runtime"
 if ! command -v git >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
   install_runtime
@@ -120,9 +156,6 @@ if [ ! -f .env ]; then
   ADMIN_TOKEN="tp_admin_$(random_secret)"
   ADMIN_PASSWORD="tp_pass_$(random_secret)"
   WEBHOOK_SECRET="tp_wh_$(random_secret)"
-  if [ -z "$PUBLIC_URL" ]; then
-    PUBLIC_URL="http://127.0.0.1:${PORT}"
-  fi
   sed -i "s|^HOST=.*|HOST=0.0.0.0|" .env
   sed -i "s|^PORT=.*|PORT=${PORT}|" .env
   sed -i "s|^PUBLIC_URL=.*|PUBLIC_URL=${PUBLIC_URL}|" .env
@@ -130,12 +163,16 @@ if [ ! -f .env ]; then
   sed -i "s|^DATABASE_DRIVER=.*|DATABASE_DRIVER=sqlite|" .env
   sed -i "s|^DATABASE_FILE=.*|DATABASE_FILE=/app/data/telepic.sqlite|" .env
   sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|" .env
-  sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|" .env
+  sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME}|" .env
   sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" .env
   sed -i "s|^ADMIN_SESSION_HOURS=.*|ADMIN_SESSION_HOURS=168|" .env
   sed -i "s|^TELEGRAM_WEBHOOK_SECRET=.*|TELEGRAM_WEBHOOK_SECRET=${WEBHOOK_SECRET}|" .env
 else
   ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | tail -n 1 | cut -d= -f2- || true)"
+  ADMIN_USERNAME="$(grep '^ADMIN_USERNAME=' .env | tail -n 1 | cut -d= -f2- || true)"
+  if [ -z "$ADMIN_USERNAME" ]; then
+    ADMIN_USERNAME="admin"
+  fi
   ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' .env | tail -n 1 | cut -d= -f2- || true)"
   if [ -z "$ADMIN_PASSWORD" ]; then
     ADMIN_PASSWORD="$ADMIN_TOKEN"
@@ -148,7 +185,7 @@ $COMPOSE up -d --build
 echo ""
 echo "Telepic is running."
 echo "URL: ${PUBLIC_URL}"
-echo "Admin username: admin"
+echo "Admin username: ${ADMIN_USERNAME}"
 echo "Admin password: ${ADMIN_PASSWORD}"
 echo "Admin token: ${ADMIN_TOKEN}"
 echo ""

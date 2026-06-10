@@ -9,9 +9,21 @@ function loadEnvFile(filePath) {
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
     const index = trimmed.indexOf('=');
     const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim().replace(/^"|"$/g, '');
+    const value = parseEnvValue(trimmed.slice(index + 1).trim());
     if (key && process.env[key] === undefined) process.env[key] = value;
   }
+}
+
+function parseEnvValue(value) {
+  if (!value) return '';
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
 }
 
 const envFile = path.resolve(process.cwd(), '.env');

@@ -27,47 +27,77 @@ const state = {
 };
 
 const THEME_PRESETS = {
-  forest: {
+  gallery: {
+    label: '艺廊白',
+    bg: '#eef1ee',
+    panel: '#ffffff',
+    ink: '#19201f',
+    accent: '#2f7d68',
+    danger: '#c44f46',
+    backdrop: 'radial-gradient(circle at 18% 12%, rgba(47,125,104,0.18), transparent 30%), radial-gradient(circle at 84% 18%, rgba(219,154,87,0.18), transparent 28%), linear-gradient(135deg, #eef1ee 0%, #f8f6f0 52%, #e8eff2 100%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))',
+    panelAlpha: 0.88,
+    blur: 18
+  },
+  coast: {
+    label: '海岸玻璃',
+    bg: '#e8f1f2',
+    panel: '#ffffff',
+    ink: '#142429',
+    accent: '#197c8c',
+    danger: '#c65b4d',
+    backdrop: 'radial-gradient(circle at 18% 18%, rgba(25,124,140,0.28), transparent 30%), radial-gradient(circle at 84% 24%, rgba(244,170,91,0.22), transparent 30%), linear-gradient(135deg, #dfeff0 0%, #f7fbfa 48%, #edf0e7 100%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.36), rgba(255,255,255,0.12))',
+    panelAlpha: 0.82,
+    blur: 22
+  },
+  studio: {
+    label: '影棚灰',
+    bg: '#eceff1',
+    panel: '#fbfbfa',
+    ink: '#1d2227',
+    accent: '#596f82',
+    danger: '#bd4f49',
+    backdrop: 'linear-gradient(120deg, rgba(255,255,255,0.78), rgba(210,217,222,0.58)), repeating-linear-gradient(90deg, rgba(40,48,56,0.045) 0 1px, transparent 1px 96px)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0.08))',
+    panelAlpha: 0.90,
+    blur: 14
+  },
+  dusk: {
+    label: '暮色柔光',
+    bg: '#f1ece8',
+    panel: '#fffdf9',
+    ink: '#27201d',
+    accent: '#8d6b4f',
+    danger: '#b95148',
+    backdrop: 'radial-gradient(circle at 22% 18%, rgba(221,145,96,0.28), transparent 32%), radial-gradient(circle at 78% 12%, rgba(93,125,142,0.20), transparent 28%), linear-gradient(135deg, #f5ede7 0%, #f8f6ef 52%, #e9eef1 100%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.16))',
+    panelAlpha: 0.86,
+    blur: 18
+  },
+  focus: {
+    label: '暗场工作台',
+    bg: '#11161a',
+    panel: '#171d22',
+    ink: '#e9eef0',
+    accent: '#58b899',
+    danger: '#ef7868',
+    backdrop: 'radial-gradient(circle at 18% 18%, rgba(88,184,153,0.18), transparent 30%), radial-gradient(circle at 82% 12%, rgba(232,184,104,0.13), transparent 26%), linear-gradient(135deg, #11161a 0%, #1c2226 52%, #12171b 100%)',
+    overlay: 'linear-gradient(180deg, rgba(0,0,0,0.16), rgba(0,0,0,0.30))',
+    panelAlpha: 0.82,
+    blur: 20
+  },
+  botanical: {
+    label: '植物玻璃',
     bg: '#edf3ef',
     panel: '#ffffff',
     ink: '#182126',
     accent: '#237a57',
-    danger: '#c0463a'
-  },
-  graphite: {
-    bg: '#eef2f6',
-    panel: '#ffffff',
-    ink: '#182230',
-    accent: '#326aa1',
-    danger: '#bf4b3d'
-  },
-  paper: {
-    bg: '#f7f3eb',
-    panel: '#fffdfa',
-    ink: '#2b261f',
-    accent: '#8e6743',
-    danger: '#b84e3e'
-  },
-  midnight: {
-    bg: '#0f141c',
-    panel: '#171f2b',
-    ink: '#e8edf5',
-    accent: '#42b58d',
-    danger: '#ef7868'
-  },
-  copper: {
-    bg: '#f6eee7',
-    panel: '#fffaf6',
-    ink: '#2a1d18',
-    accent: '#bf6a2f',
-    danger: '#b54034'
-  },
-  ocean: {
-    bg: '#eaf2f7',
-    panel: '#ffffff',
-    ink: '#1a2730',
-    accent: '#1f6f8b',
-    danger: '#cc5b48'
+    danger: '#c0463a',
+    backdrop: 'radial-gradient(circle at 16% 18%, rgba(35,122,87,0.24), transparent 30%), radial-gradient(circle at 90% 8%, rgba(87,132,166,0.18), transparent 26%), linear-gradient(135deg, #edf3ef 0%, #f8faf7 50%, #e9eef3 100%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.12))',
+    panelAlpha: 0.86,
+    blur: 18
   }
 };
 
@@ -151,6 +181,8 @@ function bindEvents() {
   on('#themeQuickPicks', 'click', handleThemeQuickPick);
   on('#saveTheme', 'click', saveThemeFromInputs);
   on('#resetTheme', 'click', resetThemePreset);
+  on('#themeBackgroundFile', 'change', handleThemeBackgroundUpload);
+  on('#clearThemeBackground', 'click', clearThemeBackground);
   ['themeBg', 'themePanel', 'themeInk', 'themeAccent', 'themeDanger'].forEach((id) => {
     on(`#${id}`, 'input', previewCustomTheme);
   });
@@ -1098,7 +1130,7 @@ function handleThemeQuickPick(event) {
 
 function applyPresetTheme(preset) {
   if (!THEME_PRESETS[preset]) return;
-  state.theme = { preset, ...THEME_PRESETS[preset] };
+  state.theme = { ...state.theme, preset, ...THEME_PRESETS[preset] };
   applyTheme(state.theme);
   syncThemeInputs(state.theme);
   syncThemeQuickPicks(preset);
@@ -1112,7 +1144,12 @@ function saveThemeFromInputs() {
     panel: $('#themePanel').value,
     ink: $('#themeInk').value,
     accent: $('#themeAccent').value,
-    danger: $('#themeDanger').value
+    danger: $('#themeDanger').value,
+    backdrop: state.theme.backdrop || THEME_PRESETS.gallery.backdrop,
+    overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
+    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
+    blur: state.theme.blur || THEME_PRESETS.gallery.blur,
+    image: state.theme.image || ''
   };
   applyTheme(state.theme);
   syncThemeQuickPicks('custom');
@@ -1122,7 +1159,7 @@ function saveThemeFromInputs() {
 }
 
 function resetThemePreset() {
-  const preset = $('#themePreset').value === 'custom' ? 'forest' : $('#themePreset').value;
+  const preset = $('#themePreset').value === 'custom' ? 'gallery' : $('#themePreset').value;
   applyPresetTheme(preset);
   toast('已恢复当前预设');
 }
@@ -1134,12 +1171,54 @@ function previewCustomTheme() {
     panel: $('#themePanel').value,
     ink: $('#themeInk').value,
     accent: $('#themeAccent').value,
-    danger: $('#themeDanger').value
+    danger: $('#themeDanger').value,
+    backdrop: state.theme.backdrop || THEME_PRESETS.gallery.backdrop,
+    overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
+    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
+    blur: state.theme.blur || THEME_PRESETS.gallery.blur,
+    image: state.theme.image || ''
   };
   applyTheme(preview, false);
   $('#themePreset').value = 'custom';
   syncThemeQuickPicks('custom');
   $('#themeBadge').textContent = '自定义';
+}
+
+function handleThemeBackgroundUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toast('请选择图片文件');
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    toast('背景图片建议小于 2 MiB');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.theme = {
+      ...state.theme,
+      preset: 'custom',
+      image: String(reader.result || '')
+    };
+    applyTheme(state.theme);
+    syncThemeQuickPicks('custom');
+    persistTheme();
+    $('#themePreset').value = 'custom';
+    toast('背景图片已应用');
+  };
+  reader.onerror = () => toast('背景图片读取失败');
+  reader.readAsDataURL(file);
+}
+
+function clearThemeBackground() {
+  state.theme = { ...state.theme, image: '' };
+  applyTheme(state.theme);
+  persistTheme();
+  const input = $('#themeBackgroundFile');
+  if (input) input.value = '';
+  toast('背景图片已移除');
 }
 
 function applyTheme(theme, updateState = true) {
@@ -1158,22 +1237,28 @@ function applyTheme(theme, updateState = true) {
   root.style.setProperty('--danger-soft', mixColor(theme.danger, theme.panel, 0.88));
   root.style.setProperty('--accent-strong', mixColor(theme.accent, theme.ink, 0.18));
   root.style.setProperty('--accent-contrast', luminance(theme.accent) > 0.52 ? '#102028' : '#ffffff');
-  root.style.setProperty('--shadow', theme.preset === 'midnight'
-    ? '0 18px 38px rgba(0, 0, 0, 0.34)'
-    : '0 16px 28px rgba(16, 24, 40, 0.08)');
-  document.body.classList.toggle('theme-dark', theme.preset === 'midnight' || luminance(theme.bg) < 0.35);
+  root.style.setProperty('--panel-bg', hexToRgba(theme.panel, theme.panelAlpha || 0.88));
+  root.style.setProperty('--panel-blur', `${theme.blur || 16}px`);
+  root.style.setProperty('--theme-backdrop', theme.image ? `url("${theme.image}"), ${theme.backdrop}` : theme.backdrop);
+  root.style.setProperty('--theme-overlay', theme.overlay || 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.08))');
+  root.style.setProperty('--shadow', luminance(theme.bg) < 0.35
+    ? '0 18px 44px rgba(0, 0, 0, 0.38)'
+    : '0 16px 34px rgba(16, 24, 40, 0.10)');
+  document.body.classList.toggle('theme-dark', luminance(theme.bg) < 0.35);
   $('#themeBadge').textContent = themeName(theme.preset);
   renderThemePreview(theme);
   syncThemeQuickPicks(theme.preset);
 }
 
 function syncThemeInputs(theme) {
-  $('#themePreset').value = theme.preset || 'forest';
+  $('#themePreset').value = theme.preset || 'gallery';
   $('#themeBg').value = theme.bg;
   $('#themePanel').value = theme.panel;
   $('#themeInk').value = theme.ink;
   $('#themeAccent').value = theme.accent;
   $('#themeDanger').value = theme.danger;
+  const hint = $('#themeBackgroundHint');
+  if (hint) hint.textContent = theme.image ? '已设置背景图' : '本地保存';
 }
 
 function persistTheme() {
@@ -1197,28 +1282,33 @@ function renderThemePreview(theme) {
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.ink)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.accent)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.danger)}"></div>
-    <div class="theme-preview-label">${themeName(theme.preset)} · 当前面板配色</div>
+    <div class="theme-preview-label">${themeName(theme.preset)} · ${theme.image ? '自定义背景图' : '预设风格背景'}</div>
   `;
 }
 
 function loadTheme() {
   try {
     const raw = localStorage.getItem('telepic.theme');
-    if (!raw) return { preset: 'forest', ...THEME_PRESETS.forest };
+    if (!raw) return { preset: 'gallery', ...THEME_PRESETS.gallery };
     const parsed = JSON.parse(raw);
     if (parsed.preset && THEME_PRESETS[parsed.preset] && parsed.preset !== 'custom') {
-      return { preset: parsed.preset, ...THEME_PRESETS[parsed.preset] };
+      return { ...parsed, preset: parsed.preset, ...THEME_PRESETS[parsed.preset], image: parsed.image || '' };
     }
     return {
       preset: 'custom',
-      bg: parsed.bg || THEME_PRESETS.forest.bg,
-      panel: parsed.panel || THEME_PRESETS.forest.panel,
-      ink: parsed.ink || THEME_PRESETS.forest.ink,
-      accent: parsed.accent || THEME_PRESETS.forest.accent,
-      danger: parsed.danger || THEME_PRESETS.forest.danger
+      bg: parsed.bg || THEME_PRESETS.gallery.bg,
+      panel: parsed.panel || THEME_PRESETS.gallery.panel,
+      ink: parsed.ink || THEME_PRESETS.gallery.ink,
+      accent: parsed.accent || THEME_PRESETS.gallery.accent,
+      danger: parsed.danger || THEME_PRESETS.gallery.danger,
+      backdrop: parsed.backdrop || THEME_PRESETS.gallery.backdrop,
+      overlay: parsed.overlay || THEME_PRESETS.gallery.overlay,
+      panelAlpha: parsed.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
+      blur: parsed.blur || THEME_PRESETS.gallery.blur,
+      image: parsed.image || ''
     };
   } catch {
-    return { preset: 'forest', ...THEME_PRESETS.forest };
+    return { preset: 'gallery', ...THEME_PRESETS.gallery };
   }
 }
 
@@ -1417,6 +1507,11 @@ function rgbToHex({ r, g, b }) {
   return `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function hexToRgba(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function luminance(hex) {
   const { r, g, b } = hexToRgb(hex);
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
@@ -1427,12 +1522,12 @@ function capitalize(value) {
 }
 
 function themeName(preset) {
-  if (preset === 'forest') return '森绿';
-  if (preset === 'graphite') return '石墨';
-  if (preset === 'paper') return '纸白';
-  if (preset === 'midnight') return '夜幕';
-  if (preset === 'copper') return '铜橙';
-  if (preset === 'ocean') return '海港';
+  if (preset === 'gallery') return '艺廊白';
+  if (preset === 'coast') return '海岸玻璃';
+  if (preset === 'studio') return '影棚灰';
+  if (preset === 'dusk') return '暮色柔光';
+  if (preset === 'focus') return '暗场工作台';
+  if (preset === 'botanical') return '植物玻璃';
   if (preset === 'custom') return '自定义';
   return capitalize(preset);
 }

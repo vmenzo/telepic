@@ -95,54 +95,54 @@ function htmlPage(config) {
             <p class="panel-kicker">外观</p>
             <h2>主题实验室</h2>
           </div>
-          <span id="themeBadge" class="badge">森绿</span>
+          <span id="themeBadge" class="badge">艺廊白</span>
         </div>
         <div class="theme-stack">
           <div id="themeQuickPicks" class="theme-preset-grid">
-            <button type="button" class="theme-preset is-active" data-theme-preset="forest">
-              <span class="theme-preset-name">森绿</span>
+            <button type="button" class="theme-preset is-active" data-theme-preset="gallery">
+              <span class="theme-preset-name">艺廊白</span>
               <span class="theme-preset-swatches">
-                <i style="background:#edf3ef"></i><i style="background:#237a57"></i><i style="background:#c0463a"></i>
+                <i style="background:#eef1ee"></i><i style="background:#2f7d68"></i><i style="background:#db9a57"></i>
               </span>
             </button>
-            <button type="button" class="theme-preset" data-theme-preset="graphite">
-              <span class="theme-preset-name">石墨</span>
+            <button type="button" class="theme-preset" data-theme-preset="coast">
+              <span class="theme-preset-name">海岸玻璃</span>
               <span class="theme-preset-swatches">
-                <i style="background:#eef2f6"></i><i style="background:#326aa1"></i><i style="background:#bf4b3d"></i>
+                <i style="background:#e8f1f2"></i><i style="background:#197c8c"></i><i style="background:#f4aa5b"></i>
               </span>
             </button>
-            <button type="button" class="theme-preset" data-theme-preset="paper">
-              <span class="theme-preset-name">纸白</span>
+            <button type="button" class="theme-preset" data-theme-preset="studio">
+              <span class="theme-preset-name">影棚灰</span>
               <span class="theme-preset-swatches">
-                <i style="background:#f7f3eb"></i><i style="background:#8e6743"></i><i style="background:#b84e3e"></i>
+                <i style="background:#eceff1"></i><i style="background:#596f82"></i><i style="background:#bd4f49"></i>
               </span>
             </button>
-            <button type="button" class="theme-preset" data-theme-preset="midnight">
-              <span class="theme-preset-name">夜幕</span>
+            <button type="button" class="theme-preset" data-theme-preset="dusk">
+              <span class="theme-preset-name">暮色柔光</span>
               <span class="theme-preset-swatches">
-                <i style="background:#0f141c"></i><i style="background:#42b58d"></i><i style="background:#ef7868"></i>
+                <i style="background:#f1ece8"></i><i style="background:#8d6b4f"></i><i style="background:#5d7d8e"></i>
               </span>
             </button>
-            <button type="button" class="theme-preset" data-theme-preset="copper">
-              <span class="theme-preset-name">铜橙</span>
+            <button type="button" class="theme-preset" data-theme-preset="focus">
+              <span class="theme-preset-name">暗场工作台</span>
               <span class="theme-preset-swatches">
-                <i style="background:#f6eee7"></i><i style="background:#bf6a2f"></i><i style="background:#b54034"></i>
+                <i style="background:#11161a"></i><i style="background:#58b899"></i><i style="background:#e8b868"></i>
               </span>
             </button>
-            <button type="button" class="theme-preset" data-theme-preset="ocean">
-              <span class="theme-preset-name">海港</span>
+            <button type="button" class="theme-preset" data-theme-preset="botanical">
+              <span class="theme-preset-name">植物玻璃</span>
               <span class="theme-preset-swatches">
-                <i style="background:#eaf2f7"></i><i style="background:#1f6f8b"></i><i style="background:#cc5b48"></i>
+                <i style="background:#edf3ef"></i><i style="background:#237a57"></i><i style="background:#5784a6"></i>
               </span>
             </button>
           </div>
           <select id="themePreset">
-            <option value="forest">森绿</option>
-            <option value="graphite">石墨</option>
-            <option value="paper">纸白</option>
-            <option value="midnight">夜幕</option>
-            <option value="copper">铜橙</option>
-            <option value="ocean">海港</option>
+            <option value="gallery">艺廊白</option>
+            <option value="coast">海岸玻璃</option>
+            <option value="studio">影棚灰</option>
+            <option value="dusk">暮色柔光</option>
+            <option value="focus">暗场工作台</option>
+            <option value="botanical">植物玻璃</option>
             <option value="custom">自定义</option>
           </select>
           <div class="theme-grid">
@@ -155,6 +155,14 @@ function htmlPage(config) {
           <div class="actions actions-split">
             <button id="saveTheme" class="secondary">保存主题</button>
             <button id="resetTheme" class="secondary">恢复预设</button>
+          </div>
+          <label class="background-picker">
+            <span>背景图片</span>
+            <input id="themeBackgroundFile" type="file" accept="image/*">
+          </label>
+          <div class="actions actions-split">
+            <button id="clearThemeBackground" class="secondary">移除背景图</button>
+            <button id="themeBackgroundHint" class="secondary" type="button" disabled>本地保存</button>
           </div>
           <div id="themePreview" class="theme-preview"></div>
         </div>
@@ -452,12 +460,12 @@ function htmlPage(config) {
       }
     });
     window.TELEPIC_THEME_PRESETS = {
-      forest: { bg: '#edf3ef', panel: '#ffffff', ink: '#182126', accent: '#237a57', danger: '#c0463a', label: '森绿' },
-      graphite: { bg: '#eef2f6', panel: '#ffffff', ink: '#182230', accent: '#326aa1', danger: '#bf4b3d', label: '石墨' },
-      paper: { bg: '#f7f3eb', panel: '#fffdfa', ink: '#2b261f', accent: '#8e6743', danger: '#b84e3e', label: '纸白' },
-      midnight: { bg: '#0f141c', panel: '#171f2b', ink: '#e8edf5', accent: '#42b58d', danger: '#ef7868', label: '夜幕' },
-      copper: { bg: '#f6eee7', panel: '#fffaf6', ink: '#2a1d18', accent: '#bf6a2f', danger: '#b54034', label: '铜橙' },
-      ocean: { bg: '#eaf2f7', panel: '#ffffff', ink: '#1a2730', accent: '#1f6f8b', danger: '#cc5b48', label: '海港' }
+      gallery: { bg: '#eef1ee', panel: '#ffffff', ink: '#19201f', accent: '#2f7d68', danger: '#c44f46', label: '艺廊白' },
+      coast: { bg: '#e8f1f2', panel: '#ffffff', ink: '#142429', accent: '#197c8c', danger: '#c65b4d', label: '海岸玻璃' },
+      studio: { bg: '#eceff1', panel: '#fbfbfa', ink: '#1d2227', accent: '#596f82', danger: '#bd4f49', label: '影棚灰' },
+      dusk: { bg: '#f1ece8', panel: '#fffdf9', ink: '#27201d', accent: '#8d6b4f', danger: '#b95148', label: '暮色柔光' },
+      focus: { bg: '#11161a', panel: '#171d22', ink: '#e9eef0', accent: '#58b899', danger: '#ef7868', label: '暗场工作台' },
+      botanical: { bg: '#edf3ef', panel: '#ffffff', ink: '#182126', accent: '#237a57', danger: '#c0463a', label: '植物玻璃' }
     };
     (function () {
       function qs(selector) { return document.querySelector(selector); }

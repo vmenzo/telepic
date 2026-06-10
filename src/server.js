@@ -4,17 +4,17 @@ const path = require('path');
 const { URL } = require('url');
 
 const config = require('./config');
-const { createAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession } = require('./auth');
+const { bearerToken, createAdminSession, refreshAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession } = require('./auth');
 const { createDb } = require('./db');
 const { parseMultipartRequest } = require('./multipart');
 const { createStorage } = require('./storage');
-const { handleTelegramUpdate } = require('./telegram');
+const { handleTelegramUpdate, telegramApi } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
 const { isImageMime, json, parseJsonBody, text } = require('./utils');
 const packageJson = require('../package.json');
 
 const db = createDb(config);
-const storage = createStorage(config);
+let storage = createStorage(config);
 
 db.load();
 storage.ensure();
@@ -30,6 +30,7 @@ const server = http.createServer((req, res) => {
 });
 
 async function route(req, res) {
+  refreshSessionHeader(req, res);
   const url = new URL(req.url, config.publicUrl);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -81,6 +82,12 @@ async function route(req, res) {
       return json(res, 401, { error: 'Invalid username or password' });
     }
     return json(res, 200, createAdminSession(config));
+  }
+
+  if (req.method === 'POST' && pathname === '/api/session/refresh') {
+    const refreshed = refreshAdminSession(bearerToken(req), config);
+    if (!refreshed) return json(res, 401, { error: 'Session expired' });
+    return json(res, 200, refreshed);
   }
 
   if (req.method === 'POST' && pathname === '/api/admin/password') {
@@ -226,6 +233,7 @@ async function route(req, res) {
       adminAuthenticated: admin,
       adminUsername: config.adminUsername,
       adminSessionHours: config.adminSessionHours,
+      adminSessionIdleMinutes: config.adminSessionIdleMinutes,
       serverTime: new Date().toISOString(),
       checks: {
         api: true,
@@ -237,7 +245,10 @@ async function route(req, res) {
       databaseFile: admin ? config.databaseFile : '',
       dataDir: admin ? config.dataDir : '',
       telegramEnabled: Boolean(config.telegramBotToken),
+      telegramBotConfigured: Boolean(config.telegramBotToken),
       telegramAllowedUsersConfigured: config.telegramAllowedUserIds.length > 0,
+      telegramAllowedUserIds: admin ? config.telegramAllowedUserIds.join(',') : '',
+      telegramWebhookSecret: admin ? config.telegramWebhookSecret : '',
       telegramWebhookUrl: admin ? `${config.publicUrl}/telegram/${config.telegramWebhookSecret}` : '',
       storageDriver: config.storageDriver,
       s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey),
@@ -249,6 +260,74 @@ async function route(req, res) {
       s3PublicBaseUrl: config.s3PublicBaseUrl || '',
       maxUploadBytes: config.maxUploadBytes
     });
+  }
+
+  if (req.method === 'PUT' && pathname === '/api/integrations/telegram') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 64 * 1024);
+    updateRuntimeConfig({
+      publicUrl: cleanUrl(body.publicUrl, config.publicUrl),
+      telegramBotToken: typeof body.botToken === 'string' && body.botToken.trim() ? body.botToken.trim() : config.telegramBotToken,
+      telegramWebhookSecret: cleanSecret(body.webhookSecret, config.telegramWebhookSecret),
+      telegramAllowedUserIds: csvList(body.allowedUserIds)
+    });
+    updateEnvValues(config.envFile, {
+      PUBLIC_URL: config.publicUrl,
+      TELEGRAM_BOT_TOKEN: config.telegramBotToken,
+      TELEGRAM_WEBHOOK_SECRET: config.telegramWebhookSecret,
+      TELEGRAM_ALLOWED_USER_IDS: config.telegramAllowedUserIds.join(',')
+    });
+    db.addEvent('integration.telegram.updated', { actor: auth.actor });
+    return json(res, 200, telegramConfigPayload());
+  }
+
+  if (req.method === 'POST' && pathname === '/api/integrations/telegram/webhook') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    if (!config.telegramBotToken) return json(res, 400, { error: 'Telegram bot token is not configured' });
+    const webhookUrl = `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`;
+    const result = await telegramApi(config, 'setWebhook', { url: webhookUrl });
+    if (!result || !result.ok) {
+      return json(res, 502, { error: result && result.description ? result.description : 'Telegram webhook registration failed' });
+    }
+    db.addEvent('integration.telegram.webhook_registered', { actor: auth.actor, webhookUrl });
+    return json(res, 200, { ok: true, webhookUrl, telegram: result });
+  }
+
+  if (req.method === 'PUT' && pathname === '/api/integrations/storage') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 96 * 1024);
+    const next = storageConfigFromBody(body);
+    if (next.storageDriver === 's3') {
+      const missing = ['s3Bucket', 's3AccessKeyId', 's3SecretAccessKey'].filter((key) => !next[key]);
+      if (missing.length) return json(res, 400, { error: `Missing object storage configuration: ${missing.join(', ')}` });
+    }
+    updateRuntimeConfig(next);
+    storage = createStorage(config);
+    storage.ensure();
+    updateEnvValues(config.envFile, {
+      STORAGE_DRIVER: config.storageDriver,
+      S3_BUCKET: config.s3Bucket,
+      S3_REGION: config.s3Region,
+      S3_ENDPOINT: config.s3Endpoint,
+      S3_ACCESS_KEY_ID: config.s3AccessKeyId,
+      S3_SECRET_ACCESS_KEY: config.s3SecretAccessKey,
+      S3_PUBLIC_BASE_URL: config.s3PublicBaseUrl,
+      S3_PREFIX: config.s3Prefix,
+      S3_FORCE_PATH_STYLE: String(config.s3ForcePathStyle)
+    });
+    db.addEvent('integration.storage.updated', { actor: auth.actor, storageDriver: config.storageDriver });
+    return json(res, 200, storageConfigPayload());
+  }
+
+  if (req.method === 'POST' && pathname === '/api/integrations/storage/test') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const candidate = createStorage(config);
+    candidate.ensure();
+    return json(res, 200, { ok: true, storageDriver: config.storageDriver, s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey) });
   }
 
   if (req.method === 'GET' && pathname === '/api/tokens') {
@@ -481,6 +560,117 @@ function updateEnvValue(filePath, key, value) {
   });
   if (!replaced) next.push(line);
   fs.writeFileSync(filePath, next.join('\n').replace(/\n*$/, '\n'));
+}
+
+function updateEnvValues(filePath, values) {
+  for (const [key, value] of Object.entries(values)) updateEnvValue(filePath, key, value);
+}
+
+function updateRuntimeConfig(values) {
+  for (const [key, value] of Object.entries(values)) {
+    config[key] = value;
+  }
+}
+
+function telegramConfigPayload() {
+  return {
+    ok: true,
+    telegramEnabled: Boolean(config.telegramBotToken),
+    telegramBotConfigured: Boolean(config.telegramBotToken),
+    telegramAllowedUserIds: config.telegramAllowedUserIds.join(','),
+    telegramWebhookSecret: config.telegramWebhookSecret,
+    telegramWebhookUrl: `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`,
+    publicUrl: config.publicUrl
+  };
+}
+
+function storageConfigPayload() {
+  return {
+    ok: true,
+    storageDriver: config.storageDriver,
+    s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey),
+    s3Bucket: config.s3Bucket,
+    s3Endpoint: config.s3Endpoint,
+    s3Region: config.s3Region,
+    s3Prefix: config.s3Prefix,
+    s3ForcePathStyle: config.s3ForcePathStyle,
+    s3PublicBaseUrl: config.s3PublicBaseUrl
+  };
+}
+
+function storageConfigFromBody(body) {
+  const storageDriver = body.storageDriver === 's3' ? 's3' : 'local';
+  return {
+    storageDriver,
+    s3Bucket: cleanText(body.s3Bucket, config.s3Bucket, 200),
+    s3Region: cleanText(body.s3Region, config.s3Region || 'auto', 80) || 'auto',
+    s3Endpoint: cleanOptionalUrl(body.s3Endpoint, config.s3Endpoint),
+    s3AccessKeyId: cleanConfigText(body.s3AccessKeyId, config.s3AccessKeyId, 400),
+    s3SecretAccessKey: cleanConfigText(body.s3SecretAccessKey, config.s3SecretAccessKey, 800),
+    s3PublicBaseUrl: cleanOptionalUrl(body.s3PublicBaseUrl, config.s3PublicBaseUrl),
+    s3Prefix: cleanPrefix(body.s3Prefix, config.s3Prefix),
+    s3ForcePathStyle: boolInput(body.s3ForcePathStyle, config.s3ForcePathStyle)
+  };
+}
+
+function cleanText(value, fallback = '', max = 400) {
+  if (typeof value !== 'string') return fallback || '';
+  return value.trim().slice(0, max);
+}
+
+function cleanConfigText(value, fallback = '', max = 400) {
+  const textValue = cleanText(value, '', max);
+  return textValue || fallback || '';
+}
+
+function cleanUrl(value, fallback = '') {
+  const textValue = cleanText(value, fallback, 400).replace(/\/+$/, '');
+  if (!textValue) return fallback || '';
+  try {
+    const parsed = new URL(textValue);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return fallback || '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return fallback || '';
+  }
+}
+
+function cleanOptionalUrl(value, fallback = '') {
+  const textValue = cleanText(value, '', 400);
+  return textValue ? cleanUrl(textValue, fallback) : '';
+}
+
+function cleanSecret(value, fallback = '') {
+  const textValue = cleanText(value, fallback, 200);
+  return textValue.replace(/[^a-zA-Z0-9_-]/g, '') || fallback || `tp_wh_${Date.now().toString(36)}`;
+}
+
+function cleanPrefix(value, fallback = '') {
+  const textValue = cleanText(value, fallback, 180);
+  return textValue.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function csvList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 200);
+}
+
+function boolInput(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return Boolean(fallback);
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function refreshSessionHeader(req, res) {
+  const token = bearerToken(req);
+  const refreshed = refreshAdminSession(token, config);
+  if (!refreshed) return;
+  res.setHeader('x-admin-session', refreshed.token);
+  res.setHeader('x-admin-session-expires-at', refreshed.expiresAt);
+  res.setHeader('x-admin-session-idle-expires-at', refreshed.idleExpiresAt);
 }
 
 function settingsPath() {

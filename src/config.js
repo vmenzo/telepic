@@ -72,6 +72,7 @@ module.exports = {
   adminPassword: process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || 'change-me-to-a-long-random-secret',
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_TOKEN || '',
   adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS || 168),
+  adminSessionIdleMinutes: Number(process.env.ADMIN_SESSION_IDLE_MINUTES || 30),
   publicUpload: bool(process.env.PUBLIC_UPLOAD, false),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || 'change-me-webhook-secret',

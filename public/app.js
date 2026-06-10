@@ -89,9 +89,15 @@ const DEFAULT_STATS = {
   sourceBreakdown: {}
 };
 
+const SESSION_IDLE_FALLBACK_MS = 30 * 60 * 1000;
+const SESSION_ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+let sessionIdleTimer = null;
+let lastSessionRefreshAt = 0;
+
 const state = {
   adminToken: localStorage.getItem('telepic.adminToken') || '',
   adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
+  sessionIdleExpiresAt: Number(localStorage.getItem('telepic.sessionIdleExpiresAt') || 0),
   images: [],
   selected: new Set(),
   config: {},
@@ -170,6 +176,10 @@ function bindEvents() {
   on('#bulkPrivate', 'click', () => bulkUpdate({ visibility: 'private' }, '已批量设为私有'));
   on('#createToken', 'click', createToken);
   on('#changePassword', 'click', changeAdminPassword);
+  on('#saveTelegramConfig', 'click', saveTelegramConfig);
+  on('#registerTelegramWebhook', 'click', registerTelegramWebhook);
+  on('#saveStorageConfig', 'click', saveStorageConfig);
+  on('#testStorageConfig', 'click', testStorageConfig);
   on('#searchInput', 'input', debounce(refreshImages, 220));
   on('#tagFilter', 'input', debounce(refreshImages, 220));
   on('#visibilityFilter', 'change', refreshImages);
@@ -197,6 +207,10 @@ function bindEvents() {
     on(`#${id}`, 'input', previewCustomTheme);
   });
   document.addEventListener('paste', handlePasteUpload);
+  SESSION_ACTIVITY_EVENTS.forEach((eventName) => {
+    document.addEventListener(eventName, markSessionActivity, { passive: true });
+  });
+  scheduleSessionIdleCheck();
 }
 
 function hydrateSession() {
@@ -230,6 +244,7 @@ async function saveLoginToken() {
     });
     state.adminToken = data.token;
     state.adminUsername = data.username || username;
+    applySessionRefresh(data);
     localStorage.setItem('telepic.adminUsername', state.adminUsername);
     const tokenInput = $('#adminToken');
     const passwordInput = $('#loginPassword');
@@ -247,9 +262,12 @@ async function saveLoginToken() {
 }
 
 function logoutAdminToken() {
+  clearSessionIdleTimer();
   state.adminToken = '';
+  state.sessionIdleExpiresAt = 0;
   state.loginDismissed = false;
   localStorage.removeItem('telepic.adminToken');
+  localStorage.removeItem('telepic.sessionIdleExpiresAt');
   sessionStorage.removeItem('telepic.loginDismissed');
   const tokenInput = $('#adminToken');
   const passwordInput = $('#loginPassword');
@@ -269,20 +287,27 @@ function dismissLogin() {
 function persistAdminToken(token) {
   if (token) {
     localStorage.setItem('telepic.adminToken', token);
+    if (!state.sessionIdleExpiresAt) {
+      state.sessionIdleExpiresAt = Date.now() + sessionIdleMs();
+      localStorage.setItem('telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
+    }
     if (state.config && state.config.adminAuthenticated === false) {
       delete state.config.adminAuthenticated;
     }
   } else {
     localStorage.removeItem('telepic.adminToken');
+    localStorage.removeItem('telepic.sessionIdleExpiresAt');
+    state.sessionIdleExpiresAt = 0;
   }
+  scheduleSessionIdleCheck();
   syncAdminState();
-  setRuntimeStatus(token ? '管理员已登录，本地浏览器已保存' : '未登录管理员');
+  setRuntimeStatus(token ? '管理员已登录' : '管理员未登录');
   refresh();
 }
 
 function syncAdminState() {
   const loggedIn = Boolean(state.adminToken);
-  const sessionExpired = loggedIn && state.config && state.config.adminAuthenticated === false;
+  const sessionExpired = loggedIn && (isSessionIdleExpired() || (state.config && state.config.adminAuthenticated === false));
   const overlay = $('#loginOverlay');
   const logout = $('#logoutToken');
   $('#adminState').textContent = sessionExpired
@@ -320,13 +345,104 @@ function headers(extra = {}) {
 }
 
 async function request(path, options = {}) {
+  if (state.adminToken && isSessionIdleExpired()) {
+    expireSession();
+    throw new Error('登录空闲超过 30 分钟，请重新登录。');
+  }
   const response = await fetch(path, {
     ...options,
     headers: headers(options.headers || {})
   });
+  applySessionRefresh({
+    token: response.headers.get('x-admin-session'),
+    expiresAt: response.headers.get('x-admin-session-expires-at'),
+    idleExpiresAt: response.headers.get('x-admin-session-idle-expires-at')
+  });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(humanizeError(data.error || `请求失败：${response.status}`));
+  if (!response.ok) {
+    if (response.status === 401 && state.adminToken) expireSession();
+    throw new Error(humanizeError(data.error || 'Request failed: ' + response.status));
+  }
   return data;
+}
+
+function applySessionRefresh(data = {}) {
+  if (!data.token || !String(data.token).startsWith('tp_session_')) return;
+  state.adminToken = data.token;
+  localStorage.setItem('telepic.adminToken', state.adminToken);
+  if (data.idleExpiresAt) {
+    const idleExpiresAt = Date.parse(data.idleExpiresAt);
+    if (Number.isFinite(idleExpiresAt)) {
+      state.sessionIdleExpiresAt = idleExpiresAt;
+      localStorage.setItem('telepic.sessionIdleExpiresAt', String(idleExpiresAt));
+    }
+  }
+  const tokenInput = $('#adminToken');
+  if (tokenInput) tokenInput.value = state.adminToken;
+  scheduleSessionIdleCheck();
+}
+
+function markSessionActivity() {
+  if (!state.adminToken) return;
+  state.sessionIdleExpiresAt = Date.now() + sessionIdleMs();
+  localStorage.setItem('telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
+  scheduleSessionIdleCheck();
+  refreshSessionAfterActivity();
+}
+
+function sessionIdleMs() {
+  const minutes = Number(state.config && state.config.adminSessionIdleMinutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes * 60 * 1000 : SESSION_IDLE_FALLBACK_MS;
+}
+
+function isSessionIdleExpired() {
+  return Boolean(state.adminToken && state.sessionIdleExpiresAt && Date.now() >= state.sessionIdleExpiresAt);
+}
+
+function scheduleSessionIdleCheck() {
+  clearSessionIdleTimer();
+  if (!state.adminToken || !state.sessionIdleExpiresAt) return;
+  const delay = Math.max(1000, Math.min(state.sessionIdleExpiresAt - Date.now(), 2147483647));
+  sessionIdleTimer = window.setTimeout(() => {
+    if (isSessionIdleExpired()) expireSession();
+    else scheduleSessionIdleCheck();
+  }, delay);
+}
+
+function clearSessionIdleTimer() {
+  if (sessionIdleTimer) {
+    window.clearTimeout(sessionIdleTimer);
+    sessionIdleTimer = null;
+  }
+}
+
+function expireSession() {
+  clearSessionIdleTimer();
+  state.adminToken = '';
+  state.sessionIdleExpiresAt = 0;
+  state.loginDismissed = false;
+  localStorage.removeItem('telepic.adminToken');
+  localStorage.removeItem('telepic.sessionIdleExpiresAt');
+  sessionStorage.removeItem('telepic.loginDismissed');
+  const tokenInput = $('#adminToken');
+  if (tokenInput) tokenInput.value = '';
+  syncAdminState();
+  toast('登录空闲超过 30 分钟，请重新登录。');
+}
+
+function refreshSessionAfterActivity() {
+  if (!state.adminToken || Date.now() - lastSessionRefreshAt < 60 * 1000) return;
+  lastSessionRefreshAt = Date.now();
+  fetch('/api/session/refresh', {
+    method: 'POST',
+    headers: headers({ 'content-type': 'application/json' })
+  }).then((response) => {
+    if (response.status === 401) {
+      expireSession();
+      return {};
+    }
+    return response.json().catch(() => ({}));
+  }).then(applySessionRefresh).catch(() => {});
 }
 
 async function uploadFiles(files) {
@@ -389,6 +505,7 @@ async function refreshConfig() {
       : 'Webhook\n保存管理员密钥后显示完整 webhook 地址';
     $('#storageBadge').textContent = state.config.storageDriver === 'local' ? '本地存储' : '对象存储';
     $('#storageBadge').className = `badge ${state.config.storageDriver === 'local' ? '' : 'ok'}`;
+    hydrateIntegrationForms();
     syncUploadGate();
     $('#systemConfig').innerHTML = [
       configRow('应用版本', `${state.config.appName || 'telepic'} ${state.config.appVersion || ''}`.trim()),
@@ -808,6 +925,123 @@ async function changeAdminPassword() {
   } catch (error) {
     result.textContent = error.message;
   }
+}
+
+function hydrateIntegrationForms() {
+  setValue('#cfgPublicUrl', state.config.publicUrl || window.TELEPIC.publicUrl || location.origin);
+  setValue('#cfgTelegramWebhookSecret', state.config.telegramWebhookSecret || '');
+  setValue('#cfgTelegramAllowedUsers', state.config.telegramAllowedUserIds || '');
+  setValue('#cfgStorageDriver', state.config.storageDriver || 'local');
+  setValue('#cfgS3Bucket', state.config.s3Bucket || '');
+  setValue('#cfgS3Region', state.config.s3Region || 'auto');
+  setValue('#cfgS3Endpoint', state.config.s3Endpoint || '');
+  setValue('#cfgS3PublicBaseUrl', state.config.s3PublicBaseUrl || '');
+  setValue('#cfgS3Prefix', state.config.s3Prefix || 'telepic');
+  const forcePath = $('#cfgS3ForcePathStyle');
+  if (forcePath) forcePath.checked = state.config.s3ForcePathStyle !== false;
+  const tgBadge = $('#telegramConfigBadge');
+  if (tgBadge) {
+    tgBadge.textContent = state.config.telegramEnabled ? '已配置' : '未配置';
+    tgBadge.className = 'badge ' + (state.config.telegramEnabled ? 'ok' : '');
+  }
+  const storageBadge = $('#storageConfigBadge');
+  if (storageBadge) {
+    storageBadge.textContent = state.config.storageDriver === 's3' ? '对象存储' : '本地';
+    storageBadge.className = 'badge ' + (state.config.storageDriver === 's3' ? 'ok' : '');
+  }
+}
+
+function setValue(selector, value) {
+  const element = $(selector);
+  if (element && element.value !== String(value || '')) element.value = value || '';
+}
+
+async function saveTelegramConfig() {
+  const result = $('#telegramConfigResult');
+  if (result) result.textContent = '正在保存 Telegram 配置...';
+  try {
+    const payload = {
+      publicUrl: $('#cfgPublicUrl') ? $('#cfgPublicUrl').value.trim() : '',
+      botToken: $('#cfgTelegramBotToken') ? $('#cfgTelegramBotToken').value.trim() : '',
+      webhookSecret: $('#cfgTelegramWebhookSecret') ? $('#cfgTelegramWebhookSecret').value.trim() : '',
+      allowedUserIds: $('#cfgTelegramAllowedUsers') ? $('#cfgTelegramAllowedUsers').value.trim() : ''
+    };
+    const data = await request('/api/integrations/telegram', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if ($('#cfgTelegramBotToken')) $('#cfgTelegramBotToken').value = '';
+    if (result) result.textContent = 'Telegram 配置已保存，Webhook: ' + (data.telegramWebhookUrl || '未生成');
+    toast('Telegram 配置已保存');
+    await refreshConfig();
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
+}
+
+async function registerTelegramWebhook() {
+  const result = $('#telegramConfigResult');
+  if (result) result.textContent = '正在向 Telegram 注册 webhook...';
+  try {
+    const data = await request('/api/integrations/telegram/webhook', { method: 'POST' });
+    if (result) result.textContent = 'Webhook 注册成功: ' + data.webhookUrl;
+    toast('Telegram Webhook 已注册');
+    await refreshConfig();
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
+}
+
+async function saveStorageConfig() {
+  const result = $('#storageConfigResult');
+  if (result) result.textContent = '正在保存对象存储配置...';
+  try {
+    const payload = storageConfigPayloadFromForm();
+    const data = await request('/api/integrations/storage', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if ($('#cfgS3AccessKeyId')) $('#cfgS3AccessKeyId').value = '';
+    if ($('#cfgS3SecretAccessKey')) $('#cfgS3SecretAccessKey').value = '';
+    if (result) result.textContent = '对象存储配置已保存，当前驱动: ' + data.storageDriver;
+    toast('存储配置已保存');
+    await refreshConfig();
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
+}
+
+async function testStorageConfig() {
+  const result = $('#storageConfigResult');
+  if (result) result.textContent = '正在测试当前存储配置...';
+  try {
+    const data = await request('/api/integrations/storage/test', { method: 'POST' });
+    if (result) result.textContent = '当前存储配置可用: ' + data.storageDriver;
+    toast('存储配置可用');
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
+}
+
+function storageConfigPayloadFromForm() {
+  const forcePath = $('#cfgS3ForcePathStyle');
+  return {
+    storageDriver: $('#cfgStorageDriver') ? $('#cfgStorageDriver').value : 'local',
+    s3Bucket: $('#cfgS3Bucket') ? $('#cfgS3Bucket').value.trim() : '',
+    s3Region: $('#cfgS3Region') ? $('#cfgS3Region').value.trim() : 'auto',
+    s3Endpoint: $('#cfgS3Endpoint') ? $('#cfgS3Endpoint').value.trim() : '',
+    s3AccessKeyId: $('#cfgS3AccessKeyId') ? $('#cfgS3AccessKeyId').value.trim() : '',
+    s3SecretAccessKey: $('#cfgS3SecretAccessKey') ? $('#cfgS3SecretAccessKey').value.trim() : '',
+    s3PublicBaseUrl: $('#cfgS3PublicBaseUrl') ? $('#cfgS3PublicBaseUrl').value.trim() : '',
+    s3Prefix: $('#cfgS3Prefix') ? $('#cfgS3Prefix').value.trim() : '',
+    s3ForcePathStyle: forcePath ? forcePath.checked : true
+  };
 }
 
 async function deleteToken(id) {

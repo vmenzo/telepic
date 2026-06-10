@@ -385,6 +385,91 @@ function htmlPage(config) {
               <span id="storageBadge" class="badge">检测中</span>
             </div>
             <div id="systemConfig" class="config-list"></div>
+            <div class="integration-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">Telegram Bot</p>
+                  <h2>快捷对接</h2>
+                </div>
+                <span id="telegramConfigBadge" class="badge">未配置</span>
+              </div>
+              <div class="integration-grid">
+                <label class="field-stack">
+                  <span>公网地址 PUBLIC_URL</span>
+                  <input id="cfgPublicUrl" placeholder="https://img.example.com">
+                </label>
+                <label class="field-stack">
+                  <span>Bot Token</span>
+                  <input id="cfgTelegramBotToken" type="password" placeholder="123456:ABC...">
+                </label>
+                <label class="field-stack">
+                  <span>Webhook Secret</span>
+                  <input id="cfgTelegramWebhookSecret" placeholder="tp_wh_xxx">
+                </label>
+                <label class="field-stack">
+                  <span>允许用户 ID</span>
+                  <input id="cfgTelegramAllowedUsers" placeholder="123456789,987654321">
+                </label>
+              </div>
+              <div class="actions actions-split">
+                <button id="saveTelegramConfig" type="button">保存 Bot 配置</button>
+                <button id="registerTelegramWebhook" type="button" class="secondary">注册 Webhook</button>
+              </div>
+              <div id="telegramConfigResult" class="result-box"></div>
+            </div>
+
+            <div class="integration-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">Object Storage</p>
+                  <h2>第三方存储桶</h2>
+                </div>
+                <span id="storageConfigBadge" class="badge">本地</span>
+              </div>
+              <div class="integration-grid">
+                <label class="field-stack">
+                  <span>存储类型</span>
+                  <select id="cfgStorageDriver">
+                    <option value="local">本地存储</option>
+                    <option value="s3">S3/R2/MinIO/B2 兼容</option>
+                  </select>
+                </label>
+                <label class="field-stack">
+                  <span>Bucket</span>
+                  <input id="cfgS3Bucket" placeholder="telepic">
+                </label>
+                <label class="field-stack">
+                  <span>Region</span>
+                  <input id="cfgS3Region" placeholder="auto">
+                </label>
+                <label class="field-stack">
+                  <span>Endpoint</span>
+                  <input id="cfgS3Endpoint" placeholder="https://xxx.r2.cloudflarestorage.com">
+                </label>
+                <label class="field-stack">
+                  <span>Access Key ID</span>
+                  <input id="cfgS3AccessKeyId" type="password">
+                </label>
+                <label class="field-stack">
+                  <span>Secret Access Key</span>
+                  <input id="cfgS3SecretAccessKey" type="password">
+                </label>
+                <label class="field-stack">
+                  <span>公开访问域名 / CDN</span>
+                  <input id="cfgS3PublicBaseUrl" placeholder="https://cdn.example.com">
+                </label>
+                <label class="field-stack">
+                  <span>目录前缀</span>
+                  <input id="cfgS3Prefix" placeholder="telepic">
+                </label>
+                <label class="checkline integration-check"><input id="cfgS3ForcePathStyle" type="checkbox" checked> Path-style URL</label>
+              </div>
+              <div class="actions actions-split">
+                <button id="saveStorageConfig" type="button">保存存储配置</button>
+                <button id="testStorageConfig" type="button" class="secondary">测试当前配置</button>
+              </div>
+              <div id="storageConfigResult" class="result-box"></div>
+            </div>
             <div class="password-panel">
               <div class="panel-head compact">
                 <div>

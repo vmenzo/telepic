@@ -18,33 +18,56 @@ function verifyAdminLogin(username, password, config) {
   return safeEqual(username, config.adminUsername) && safeEqual(password, config.adminPassword);
 }
 
-function createAdminSession(config) {
-  const expiresAt = Date.now() + config.adminSessionHours * 60 * 60 * 1000;
+function createAdminSession(config, options = {}) {
+  const now = options.now || Date.now();
+  const expiresAt = options.expiresAt || now + config.adminSessionHours * 60 * 60 * 1000;
   const payload = base64UrlEncode(JSON.stringify({
     sub: config.adminUsername,
     role: 'admin',
-    exp: expiresAt
+    exp: expiresAt,
+    last: now
   }));
   const signature = sign(payload, config);
   return {
     token: `tp_session_${payload}.${signature}`,
     expiresAt: new Date(expiresAt).toISOString(),
+    idleExpiresAt: new Date(now + idleTimeoutMs(config)).toISOString(),
+    idleMinutes: idleTimeoutMinutes(config),
     username: config.adminUsername
   };
 }
 
 function verifyAdminSession(rawToken, config) {
-  if (!rawToken || !String(rawToken).startsWith('tp_session_')) return false;
+  return Boolean(readAdminSession(rawToken, config).ok);
+}
+
+function refreshAdminSession(rawToken, config) {
+  const session = readAdminSession(rawToken, config);
+  if (!session.ok) return null;
+  return createAdminSession(config, { expiresAt: session.data.exp });
+}
+
+function readAdminSession(rawToken, config) {
+  if (!rawToken || !String(rawToken).startsWith('tp_session_')) return { ok: false };
   const token = String(rawToken).slice('tp_session_'.length);
   const parts = token.split('.');
-  if (parts.length !== 2) return false;
+  if (parts.length !== 2) return { ok: false };
   const [payload, signature] = parts;
-  if (!safeEqual(signature, sign(payload, config))) return false;
+  if (!safeEqual(signature, sign(payload, config))) return { ok: false };
   try {
     const data = JSON.parse(base64UrlDecode(payload));
-    return data.role === 'admin' && data.sub === config.adminUsername && Number(data.exp || 0) > Date.now();
+    const now = Date.now();
+    const expiresAt = Number(data.exp || 0);
+    const lastActivityAt = Number(data.last || 0);
+    const valid =
+      data.role === 'admin' &&
+      data.sub === config.adminUsername &&
+      expiresAt > now &&
+      lastActivityAt > 0 &&
+      now - lastActivityAt <= idleTimeoutMs(config);
+    return valid ? { ok: true, data: { ...data, exp: expiresAt, last: lastActivityAt } } : { ok: false };
   } catch {
-    return false;
+    return { ok: false };
   }
 }
 
@@ -79,6 +102,15 @@ function sessionSecret(config) {
   return config.adminSessionSecret || config.adminToken || config.adminPassword || 'telepic-dev-session-secret';
 }
 
+function idleTimeoutMinutes(config) {
+  const value = Number(config.adminSessionIdleMinutes || 30);
+  return Number.isFinite(value) && value > 0 ? value : 30;
+}
+
+function idleTimeoutMs(config) {
+  return idleTimeoutMinutes(config) * 60 * 1000;
+}
+
 function base64UrlEncode(value) {
   return Buffer.from(value, 'utf8').toString('base64url');
 }
@@ -94,4 +126,4 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(left, right);
 }
 
-module.exports = { bearerToken, createAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession };
+module.exports = { bearerToken, createAdminSession, refreshAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession };

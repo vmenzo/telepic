@@ -913,11 +913,13 @@ a {
 }
 
 .theme-stack,
-.api-panel {
+.api-panel,
+.integration-panel {
   gap: 14px;
 }
 
-.password-panel {
+.password-panel,
+.integration-panel {
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -926,10 +928,15 @@ a {
   background: color-mix(in srgb, var(--bg) 76%, var(--panel));
 }
 
-.password-grid {
+.password-grid,
+.integration-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+}
+
+.integration-check {
+  justify-content: start;
 }
 
 .theme-grid {
@@ -1211,6 +1218,7 @@ a {
 .theme-dark .status-item,
 .theme-dark .breakdown-row,
 .theme-dark .password-panel,
+.theme-dark .integration-panel,
 .theme-dark .notice-box {
   background: color-mix(in srgb, var(--panel) 92%, var(--bg));
 }
@@ -1527,6 +1535,7 @@ body.theme-photo .event-item,
 body.theme-photo .dropzone,
 body.theme-photo .background-picker,
 body.theme-photo .password-panel,
+body.theme-photo .integration-panel,
 body.theme-photo .api-panel,
 body.theme-photo .empty-state {
   background: color-mix(in srgb, var(--panel) 58%, transparent);

@@ -22,7 +22,11 @@ function htmlPage(config) {
       </div>
       <label class="field-stack">
         <span>管理员 Token</span>
-        <input id="loginToken" type="password" placeholder="输入 ADMIN_TOKEN">
+        <input id="loginUsername" type="text" autocomplete="username" placeholder="用户名">
+      </label>
+      <label class="field-stack">
+        <span>密码</span>
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="密码">
       </label>
       <div class="login-actions">
         <button id="loginButton" type="button">进入控制台</button>
@@ -170,8 +174,8 @@ function htmlPage(config) {
             <span>本地服务在线</span>
           </div>
           <div class="token-box">
-            <input id="adminToken" type="password" placeholder="管理员密钥">
-            <button id="saveToken">保存</button>
+            <input id="adminToken" type="password" placeholder="API 管理密钥 / 会话 Token">
+            <button id="saveToken">切换</button>
             <button id="logoutToken" class="secondary">退出</button>
           </div>
           <div id="adminState" class="mini-note">未保存管理员密钥</div>
@@ -782,7 +786,8 @@ function htmlPage(config) {
       function bindFallback() {
         var tokenInput = qs('#adminToken');
         var loginOverlay = qs('#loginOverlay');
-        var loginInput = qs('#loginToken');
+        var loginUsername = qs('#loginUsername');
+        var loginPassword = qs('#loginPassword');
         var loginButton = qs('#loginButton');
         var loginGuest = qs('#loginGuest');
         var logoutToken = qs('#logoutToken');
@@ -803,9 +808,11 @@ function htmlPage(config) {
         var clearSelectionButton = qs('#clearSelection');
         var copySelectedLinksButton = qs('#copySelectedLinks');
         var savedToken = '';
+        var savedUsername = 'admin';
         try { savedToken = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
+        try { savedUsername = localStorage.getItem('telepic.adminUsername') || 'admin'; } catch (error) {}
         if (tokenInput && savedToken) tokenInput.value = savedToken;
-        if (loginInput && savedToken) loginInput.value = savedToken;
+        if (loginUsername) loginUsername.value = savedUsername;
         function syncLoginOverlay() {
           var token = '';
           try { token = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
@@ -825,17 +832,29 @@ function htmlPage(config) {
             setRuntime('基础交互已响应');
           });
         }
-        if (loginButton && loginInput) {
+        if (loginButton && loginUsername && loginPassword) {
           loginButton.addEventListener('click', function () {
-            var token = loginInput.value.trim();
-            if (!token) return;
-            try { localStorage.setItem('telepic.adminToken', token); sessionStorage.removeItem('telepic.loginDismissed'); } catch (error) {}
-            if (tokenInput) tokenInput.value = token;
-            syncLoginOverlay();
-            loadConfig();
-            loadStats();
-            loadImages();
-            setRuntime('管理员登录成功');
+            var username = loginUsername.value.trim();
+            var password = loginPassword.value;
+            if (!username || !password) return;
+            requestJson('POST', '/api/login', { username: username, password: password }, function (status, data) {
+              if (status >= 200 && status < 300 && data.token) {
+                try {
+                  localStorage.setItem('telepic.adminToken', data.token);
+                  localStorage.setItem('telepic.adminUsername', data.username || username);
+                  sessionStorage.removeItem('telepic.loginDismissed');
+                } catch (error) {}
+                if (tokenInput) tokenInput.value = data.token;
+                loginPassword.value = '';
+                syncLoginOverlay();
+                loadConfig();
+                loadStats();
+                loadImages();
+                setRuntime('管理员登录成功');
+              } else {
+                setRuntime((data && data.error) || '登录失败');
+              }
+            });
           });
         }
         if (loginGuest) {
@@ -848,7 +867,7 @@ function htmlPage(config) {
           logoutToken.addEventListener('click', function () {
             try { localStorage.removeItem('telepic.adminToken'); sessionStorage.removeItem('telepic.loginDismissed'); } catch (error) {}
             if (tokenInput) tokenInput.value = '';
-            if (loginInput) loginInput.value = '';
+            if (loginPassword) loginPassword.value = '';
             syncLoginOverlay();
             loadConfig();
             loadStats();

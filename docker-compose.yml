@@ -22,6 +22,9 @@ services:
       S3_PREFIX: ${S3_PREFIX:-telepic}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-to-a-long-random-secret}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin-password}
+      ADMIN_SESSION_HOURS: ${ADMIN_SESSION_HOURS:-168}
       PUBLIC_UPLOAD: ${PUBLIC_UPLOAD:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-change-me-webhook-secret}

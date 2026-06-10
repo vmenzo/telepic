@@ -35,9 +35,9 @@ curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install
 - 安装 Git、Docker 和 Docker Compose
 - 拉取 GitHub 仓库到 `/opt/telepic`
 - 生成 `.env`
-- 自动生成 `ADMIN_TOKEN` 和 `TELEGRAM_WEBHOOK_SECRET`
+- 自动生成 `ADMIN_TOKEN`、管理员密码和 `TELEGRAM_WEBHOOK_SECRET`
 - 使用 Docker Compose 构建并启动服务
-- 输出管理台地址和管理员密钥
+- 输出管理台地址、管理员账号密码和管理员密钥
 
 更新到最新版：
 
@@ -104,7 +104,7 @@ node src/server.js
 http://127.0.0.1:8787
 ```
 
-把 `.env` 里的 `ADMIN_TOKEN` 粘到管理台右上角，即可启用管理功能。
+打开管理台后，用 `.env` 里的 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 登录。`ADMIN_TOKEN` 仍可作为 API 管理密钥，用于脚本、自动化或直接调用管理接口。
 
 ## Telegram Bot 对接
 
@@ -264,7 +264,10 @@ DATABASE_DRIVER=json
 | `S3_PUBLIC_BASE_URL` | 可选的公开访问域名 / CDN 域名。 |
 | `S3_PREFIX` | 对象 key 前缀。 |
 | `S3_FORCE_PATH_STYLE` | 是否使用 path-style URL。 |
-| `ADMIN_TOKEN` | 管理台和管理 API 的密钥。 |
+| `ADMIN_TOKEN` | 管理 API 的底层密钥，也用于签发 Web 登录会话。 |
+| `ADMIN_USERNAME` | Web 管理台登录用户名，默认 `admin`。 |
+| `ADMIN_PASSWORD` | Web 管理台登录密码。 |
+| `ADMIN_SESSION_HOURS` | Web 登录会话有效期，默认 `168` 小时。 |
 | `PUBLIC_UPLOAD` | 是否允许匿名上传。 |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot token。 |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook 路径密钥。 |

@@ -4,7 +4,7 @@ const path = require('path');
 const { URL } = require('url');
 
 const config = require('./config');
-const { requireAdmin, requireManage, requireUpload } = require('./auth');
+const { createAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession } = require('./auth');
 const { createDb } = require('./db');
 const { parseMultipartRequest } = require('./multipart');
 const { createStorage } = require('./storage');
@@ -56,6 +56,14 @@ async function route(req, res) {
 
   if (req.method === 'GET' && pathname === '/api/stats') {
     return json(res, 200, db.stats());
+  }
+
+  if (req.method === 'POST' && pathname === '/api/login') {
+    const body = await parseJsonBody(req, 16 * 1024);
+    if (!verifyAdminLogin(body.username, body.password, config)) {
+      return json(res, 401, { error: 'Invalid username or password' });
+    }
+    return json(res, 200, createAdminSession(config));
   }
 
   if (req.method === 'GET' && pathname === '/api/images') {
@@ -180,6 +188,8 @@ async function route(req, res) {
       publicUrl: config.publicUrl,
       publicUpload: config.publicUpload,
       adminAuthenticated: admin,
+      adminUsername: config.adminUsername,
+      adminSessionHours: config.adminSessionHours,
       databaseDriver: config.databaseDriver,
       databaseFile: admin ? config.databaseFile : '',
       dataDir: admin ? config.dataDir : '',
@@ -423,6 +433,7 @@ function hasManageAccess(req, url) {
   const queryToken = url.searchParams.get('token') || '';
   if (!queryToken) return false;
   if (config.adminToken && queryToken === config.adminToken) return true;
+  if (verifyAdminSession(queryToken, config)) return true;
   const token = db.findToken(queryToken);
   if (token && token.scopes.includes('manage')) {
     db.touchToken(token.id);

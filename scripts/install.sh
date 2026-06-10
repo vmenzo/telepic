@@ -118,6 +118,7 @@ if [ ! -f .env ]; then
   echo "==> Creating .env"
   cp .env.example .env
   ADMIN_TOKEN="tp_admin_$(random_secret)"
+  ADMIN_PASSWORD="tp_pass_$(random_secret)"
   WEBHOOK_SECRET="tp_wh_$(random_secret)"
   if [ -z "$PUBLIC_URL" ]; then
     PUBLIC_URL="http://127.0.0.1:${PORT}"
@@ -129,9 +130,16 @@ if [ ! -f .env ]; then
   sed -i "s|^DATABASE_DRIVER=.*|DATABASE_DRIVER=sqlite|" .env
   sed -i "s|^DATABASE_FILE=.*|DATABASE_FILE=/app/data/telepic.sqlite|" .env
   sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|" .env
+  sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|" .env
+  sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" .env
+  sed -i "s|^ADMIN_SESSION_HOURS=.*|ADMIN_SESSION_HOURS=168|" .env
   sed -i "s|^TELEGRAM_WEBHOOK_SECRET=.*|TELEGRAM_WEBHOOK_SECRET=${WEBHOOK_SECRET}|" .env
 else
   ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | tail -n 1 | cut -d= -f2- || true)"
+  ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' .env | tail -n 1 | cut -d= -f2- || true)"
+  if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD="$ADMIN_TOKEN"
+  fi
 fi
 
 echo "==> Starting Docker service"
@@ -140,6 +148,8 @@ $COMPOSE up -d --build
 echo ""
 echo "Telepic is running."
 echo "URL: ${PUBLIC_URL}"
+echo "Admin username: admin"
+echo "Admin password: ${ADMIN_PASSWORD}"
 echo "Admin token: ${ADMIN_TOKEN}"
 echo ""
 echo "Manage service:"

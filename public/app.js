@@ -1,5 +1,6 @@
 const state = {
   adminToken: localStorage.getItem('telepic.adminToken') || '',
+  adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
   images: [],
   selected: new Set(),
   config: {},
@@ -110,7 +111,10 @@ function bindEvents() {
   on('#logoutToken', 'click', logoutAdminToken);
   on('#loginButton', 'click', saveLoginToken);
   on('#loginGuest', 'click', dismissLogin);
-  on('#loginToken', 'keydown', (event) => {
+  on('#loginUsername', 'keydown', (event) => {
+    if (event.key === 'Enter') saveLoginToken();
+  });
+  on('#loginPassword', 'keydown', (event) => {
     if (event.key === 'Enter') saveLoginToken();
   });
   on('#adminToken', 'keydown', (event) => {
@@ -155,8 +159,8 @@ function bindEvents() {
 function hydrateSession() {
   const tokenInput = $('#adminToken');
   if (tokenInput) tokenInput.value = state.adminToken;
-  const loginInput = $('#loginToken');
-  if (loginInput) loginInput.value = state.adminToken;
+  const loginUsername = $('#loginUsername');
+  if (loginUsername) loginUsername.value = state.adminUsername;
   syncAdminState();
 }
 
@@ -166,20 +170,37 @@ function saveAdminToken() {
   toast(state.adminToken ? '管理员身份已更新' : '已清空管理员密钥');
 }
 
-function saveLoginToken() {
-  const token = $('#loginToken').value.trim();
-  if (!token) {
-    $('#loginMessage').textContent = '请输入管理员 Token。';
+async function saveLoginToken() {
+  const username = $('#loginUsername').value.trim();
+  const password = $('#loginPassword').value;
+  if (!username || !password) {
+    $('#loginMessage').textContent = '请输入用户名和密码。';
     return;
   }
-  state.adminToken = token;
-  const tokenInput = $('#adminToken');
-  if (tokenInput) tokenInput.value = token;
-  state.loginDismissed = false;
-  sessionStorage.removeItem('telepic.loginDismissed');
-  persistAdminToken(token);
-  $('#loginMessage').textContent = '已登录。';
-  toast('管理员登录成功');
+
+  $('#loginMessage').textContent = '正在登录...';
+  try {
+    const data = await request('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    state.adminToken = data.token;
+    state.adminUsername = data.username || username;
+    localStorage.setItem('telepic.adminUsername', state.adminUsername);
+    const tokenInput = $('#adminToken');
+    const passwordInput = $('#loginPassword');
+    if (tokenInput) tokenInput.value = state.adminToken;
+    if (passwordInput) passwordInput.value = '';
+    state.loginDismissed = false;
+    sessionStorage.removeItem('telepic.loginDismissed');
+    persistAdminToken(state.adminToken);
+    $('#loginMessage').textContent = data.expiresAt ? `已登录，会话有效期至 ${formatDate(data.expiresAt)}` : '已登录。';
+    toast('管理员登录成功');
+  } catch (error) {
+    $('#loginMessage').textContent = error.message;
+    toast(error.message);
+  }
 }
 
 function logoutAdminToken() {
@@ -188,9 +209,9 @@ function logoutAdminToken() {
   localStorage.removeItem('telepic.adminToken');
   sessionStorage.removeItem('telepic.loginDismissed');
   const tokenInput = $('#adminToken');
-  const loginInput = $('#loginToken');
+  const passwordInput = $('#loginPassword');
   if (tokenInput) tokenInput.value = '';
-  if (loginInput) loginInput.value = '';
+  if (passwordInput) passwordInput.value = '';
   syncAdminState();
   refresh();
   toast('已退出管理员登录');
@@ -1205,6 +1226,9 @@ function humanizeError(message) {
   }
   if (message.includes('Management requires an admin token')) {
     return '当前操作需要管理员密钥。';
+  }
+  if (message.includes('Invalid username or password')) {
+    return '用户名或密码不正确。';
   }
   return message;
 }

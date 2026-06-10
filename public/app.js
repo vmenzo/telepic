@@ -1283,8 +1283,11 @@ function applyTheme(theme, updateState = true) {
   root.style.setProperty('--accent-contrast', luminance(theme.accent) > 0.52 ? '#102028' : '#ffffff');
   root.style.setProperty('--panel-bg', hexToRgba(theme.panel, theme.panelAlpha || 0.88));
   root.style.setProperty('--panel-blur', `${theme.blur || 16}px`);
-  root.style.setProperty('--theme-backdrop', theme.image ? `url("${theme.image}"), ${theme.backdrop}` : theme.backdrop);
-  root.style.setProperty('--theme-overlay', theme.overlay || 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.08))');
+  root.style.setProperty('--theme-image', theme.image ? `url("${theme.image}")` : 'none');
+  root.style.setProperty('--theme-backdrop', theme.backdrop || THEME_PRESETS.gallery.backdrop);
+  root.style.setProperty('--theme-overlay', theme.image
+    ? 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))'
+    : (theme.overlay || 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.08))'));
   root.style.setProperty('--shadow', luminance(theme.bg) < 0.35
     ? '0 18px 44px rgba(0, 0, 0, 0.38)'
     : '0 16px 34px rgba(16, 24, 40, 0.10)');
@@ -1334,6 +1337,9 @@ async function saveThemeToCloud() {
     body: JSON.stringify({ theme: state.theme })
   });
   state.theme = normalizeTheme(data.theme || state.theme);
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   setThemeStorageState('已云端保存');
   toast('主题已保存到云端');
@@ -1375,6 +1381,7 @@ function renderThemePreview(theme) {
   const preview = $('#themePreview');
   if (!preview) return;
   preview.innerHTML = `
+    ${theme.image ? `<div class="theme-preview-image" style="background-image:url('${escapeHtml(theme.image)}')"></div>` : ''}
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.bg)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.panel)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.ink)}"></div>

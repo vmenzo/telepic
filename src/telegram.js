@@ -99,7 +99,7 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
 
   if (inputText === '取消') {
     clearPendingAction(chatId, userId);
-    await sendHomePanel({ config, db, chatId, note: '已取消当前输入。' });
+    await sendHomePanel({ config, db, chatId, userId, note: '已取消当前输入。' });
     return { ok: true };
   }
 
@@ -118,6 +118,7 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
       config,
       db,
       chatId,
+      userId,
       note: '已连接'
     });
     return { ok: true };
@@ -125,7 +126,7 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
 
   if (command.name === 'panel') {
     clearPendingAction(chatId, userId);
-    await sendHomePanel({ config, db, chatId, note: 'Telepic 控制台' });
+    await sendHomePanel({ config, db, chatId, userId, note: 'Telepic 控制台' });
     return { ok: true };
   }
 
@@ -140,7 +141,7 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
   }
 
   if (command.name === 'storage') {
-    await sendStoragePanel({ config, chatId });
+    await sendStoragePanel({ config, chatId, userId });
     return { ok: true };
   }
 
@@ -150,6 +151,7 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
       config,
       db,
       chatId,
+      userId,
       note: [
         `已收到命令：/${command.name}`,
         '管理操作请使用下方按钮。'
@@ -169,17 +171,23 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
       await sendText(config, chatId, '只支持图片文件。');
       return { ok: true };
     }
-    const image = await saveImageRecord({
-      config,
-      db,
-      storage,
-      buffer: downloaded.buffer,
-      mime: finalMime,
-      originalName: document ? document.file_name : downloaded.originalName,
-      source: 'telegram',
-      owner: String(userId)
-    });
-    await sendImageDetailPanel({ config, chatId, image, backOffset: 0, note: '上传成功' });
+    const uploadDriver = telegramUploadStorageDriver(config, userId);
+    try {
+      const image = await saveImageRecord({
+        config,
+        db,
+        storage,
+        storageDriver: uploadDriver,
+        buffer: downloaded.buffer,
+        mime: finalMime,
+        originalName: document ? document.file_name : downloaded.originalName,
+        source: 'telegram',
+        owner: String(userId)
+      });
+      await sendImageDetailPanel({ config, chatId, image, backOffset: 0, note: `上传成功 · ${storageDriverLabel(uploadDriver)}` });
+    } catch (error) {
+      await sendStoragePanel({ config, chatId, userId, note: `上传失败：${error.message}` });
+    }
   }
 
   return { ok: true };
@@ -209,7 +217,7 @@ async function handleCallbackQuery({ callback, config, db, storage }) {
 
   if (action === 'home') {
     clearPendingAction(chatId, userId);
-    await sendHomePanel({ config, db, chatId, editMessageId: messageId });
+    await sendHomePanel({ config, db, chatId, userId, editMessageId: messageId });
     await answerCallback(config, callback.id);
     return { ok: true };
   }
@@ -233,8 +241,21 @@ async function handleCallbackQuery({ callback, config, db, storage }) {
   }
 
   if (action === 'storage') {
-    await sendStoragePanel({ config, chatId, editMessageId: messageId });
+    await sendStoragePanel({ config, chatId, userId, editMessageId: messageId });
     await answerCallback(config, callback.id);
+    return { ok: true };
+  }
+
+  if (action === 'uploadstorage') {
+    const nextDriver = a === 's3' ? 's3' : 'local';
+    if (nextDriver === 's3' && !isS3Configured(config)) {
+      await sendStoragePanel({ config, chatId, userId, editMessageId: messageId, note: '对象存储未配置完整' });
+      await answerCallback(config, callback.id, '对象存储未配置完整');
+      return { ok: true };
+    }
+    setTelegramUploadStorageDriver(config, userId, nextDriver);
+    await sendStoragePanel({ config, chatId, userId, editMessageId: messageId, note: `上传位置已切换为${storageDriverLabel(nextDriver)}` });
+    await answerCallback(config, callback.id, '已切换上传位置');
     return { ok: true };
   }
 
@@ -719,6 +740,7 @@ async function sendImageDetailPanel({ config, chatId, image, backOffset = 0, edi
     `类型：${details.mime}`,
     `大小：${formatBytes(details.size)}`,
     `来源：${details.source}`,
+    `存储：${storageDriverLabel(details.storageDriver)}`,
     `可见性：${details.visibility === 'private' ? '私有' : '公开'}`,
     `标签：${details.tags.length ? details.tags.join(', ') : '无'}`
   ]);
@@ -855,9 +877,10 @@ async function sendTrashPanel({ config, db, chatId, editMessageId = null, note =
   });
 }
 
-async function sendHomePanel({ config, db, chatId, editMessageId = null, note = '' }) {
+async function sendHomePanel({ config, db, chatId, userId = null, editMessageId = null, note = '' }) {
   const settings = readSettings(config);
   const stats = db.stats();
+  const uploadDriver = telegramUploadStorageDriver(config, userId);
   const text = panelText('Telepic 控制台', [
     note || '运行中',
     `图片总数：${stats.images}`,
@@ -866,15 +889,18 @@ async function sendHomePanel({ config, db, chatId, editMessageId = null, note = 
     `相册：${ensureAlbums(settings).length}`,
     `回收站：${ensureRecycleBin(settings).length}`,
     `API 密钥：${stats.tokens}`,
-    `存储驱动：${config.storageDriver}`,
-    `来源分布：${formatSourceBreakdown(stats.sourceBreakdown)}`
+    `默认存储：${storageDriverLabel(config.storageDriver)}`,
+    `本次 TG 上传：${storageDriverLabel(uploadDriver)}`,
+    `对象存储：${isS3Configured(config) ? '已配置' : '未配置'}`,
+    `来源分布：${formatSourceBreakdown(stats.sourceBreakdown)}`,
+    '图片管理、相册、密钥、回收站、存储切换都在下方按钮操作。'
   ]);
   const inline_keyboard = [
-    [{ text: '最新图片', callback_data: 'tp:list:0' }, { text: '搜索图片', callback_data: 'tp:searchstart' }],
-    [{ text: '链接抓图', callback_data: 'tp:fetchstart' }, { text: '相册管理', callback_data: 'tp:albums' }],
-    [{ text: 'API 密钥', callback_data: 'tp:tokens' }, { text: '回收站', callback_data: 'tp:trash' }],
-    [{ text: '统计概览', callback_data: 'tp:stats' }, { text: '运行日志', callback_data: 'tp:events' }],
-    [{ text: '系统状态', callback_data: 'tp:system' }, { text: '存储状态', callback_data: 'tp:storage' }],
+    [{ text: '图片列表', callback_data: 'tp:list:0' }, { text: '搜索图片', callback_data: 'tp:searchstart' }, { text: '链接抓图', callback_data: 'tp:fetchstart' }],
+    [{ text: '上传到本地', callback_data: 'tp:uploadstorage:local' }, { text: '上传到存储桶', callback_data: 'tp:uploadstorage:s3' }],
+    [{ text: '相册管理', callback_data: 'tp:albums' }, { text: 'API 密钥', callback_data: 'tp:tokens' }, { text: '回收站', callback_data: 'tp:trash' }],
+    [{ text: '统计概览', callback_data: 'tp:stats' }, { text: '运行日志', callback_data: 'tp:events' }, { text: '系统状态', callback_data: 'tp:system' }],
+    [{ text: '存储控制台', callback_data: 'tp:storage' }],
     [{ text: '刷新首页', callback_data: 'tp:home' }]
   ];
   return sendOrEditMessage(config, {
@@ -940,13 +966,16 @@ async function sendSystemPanel({ config, chatId, db, editMessageId = null }) {
   });
 }
 
-async function sendStoragePanel({ config, chatId, editMessageId = null }) {
+async function sendStoragePanel({ config, chatId, userId = null, editMessageId = null, note = '' }) {
   const settings = readSettings(config);
+  const uploadDriver = telegramUploadStorageDriver(config, userId);
   const text = panelText('存储状态', [
-    config.storageDriver === 's3' ? '对象存储' : '本地存储',
-    `驱动：${config.storageDriver}`,
-    `Bucket：${config.s3Bucket || '本地模式'}`,
-    `Endpoint：${config.s3Endpoint || '本地模式'}`,
+    note || '管理上传位置',
+    `默认存储：${storageDriverLabel(config.storageDriver)}`,
+    `本次 TG 上传：${storageDriverLabel(uploadDriver)}`,
+    `对象存储：${isS3Configured(config) ? '已配置' : '未配置'}`,
+    `Bucket：${config.s3Bucket || '未设置'}`,
+    `Endpoint：${config.s3Endpoint || '未设置'}`,
     `前缀：${config.s3Prefix || '未设置'}`,
     `旧配置可迁移：${settings.previousStorageConfig && settings.previousStorageConfig.storageDriver ? '是' : '否'}`
   ]);
@@ -954,7 +983,13 @@ async function sendStoragePanel({ config, chatId, editMessageId = null }) {
     chatId,
     messageId: editMessageId,
     text,
-    reply_markup: { inline_keyboard: [[{ text: '系统状态', callback_data: 'tp:system' }, { text: '返回首页', callback_data: 'tp:home' }]] }
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '上传到本地', callback_data: 'tp:uploadstorage:local' }, { text: '上传到存储桶', callback_data: 'tp:uploadstorage:s3' }],
+        [{ text: '系统状态', callback_data: 'tp:system' }, { text: '统计概览', callback_data: 'tp:stats' }],
+        [{ text: '返回首页', callback_data: 'tp:home' }]
+      ]
+    }
   });
 }
 
@@ -1122,8 +1157,11 @@ function bestPhoto(message) {
   return message.photo[message.photo.length - 1];
 }
 
-async function saveImageRecord({ config, db, storage, buffer, mime, originalName, source, owner }) {
-  const image = await storage.saveImage({ buffer, mime, originalName, source, owner });
+async function saveImageRecord({ config, db, storage, storageDriver = config.storageDriver, buffer, mime, originalName, source, owner }) {
+  const targetStorage = resolveTelegramStorage(storage, storageDriver);
+  if (storageDriver === 's3' && !isS3Configured(config)) throw new Error('对象存储未配置完整');
+  const image = await targetStorage.saveImage({ buffer, mime, originalName, source, owner });
+  image.storageDriver ||= storageDriver;
   image.url = `${config.publicUrl}/i/${image.id}`;
   image.rawUrl = `${config.publicUrl}/raw/${image.id}`;
   db.addImage(image);
@@ -1168,19 +1206,21 @@ async function handlePendingText({ pending, inputText, chatId, userId, config, d
 
   if (pending.type === 'fetch') {
     try {
+      const uploadDriver = telegramUploadStorageDriver(config, userId);
       const remote = await downloadRemoteImage(inputText, config.maxUploadBytes);
       clearPendingAction(chatId, userId);
       const image = await saveImageRecord({
         config,
         db,
         storage,
+        storageDriver: uploadDriver,
         buffer: remote.buffer,
         mime: remote.mime,
         originalName: remote.originalName,
         source: 'url',
         owner: String(userId)
       });
-      await sendImageDetailPanel({ config, chatId, image, backOffset: 0, editMessageId: pending.messageId, note: '抓图成功' });
+      await sendImageDetailPanel({ config, chatId, image, backOffset: 0, editMessageId: pending.messageId, note: `抓图成功 · ${storageDriverLabel(uploadDriver)}` });
     } catch (error) {
       await sendInputPanel({
         config,
@@ -1404,7 +1444,7 @@ function renderImageList(images, title) {
 }
 
 function renderShortImage(image) {
-  return `${image.id} · ${truncate(image.originalName || image.fileName, 18)} · ${image.visibility === 'private' ? '私有' : '公开'} · ${formatBytes(image.size)}`;
+  return `${image.id} · ${truncate(image.originalName || image.fileName, 18)} · ${image.visibility === 'private' ? '私有' : '公开'} · ${storageDriverLabel(image.storageDriver)} · ${formatBytes(image.size)}`;
 }
 
 function renderEvents(events) {
@@ -1430,6 +1470,34 @@ function formatSourceBreakdown(breakdown = {}) {
   return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(' / ') : '暂无';
 }
 
+function isS3Configured(config) {
+  return Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey);
+}
+
+function storageDriverLabel(driver) {
+  return driver === 's3' ? '对象存储' : '本地存储';
+}
+
+function resolveTelegramStorage(storage, driver) {
+  if (storage && typeof storage.forDriver === 'function') return storage.forDriver(driver);
+  return storage;
+}
+
+function telegramUploadStorageDriver(config, userId) {
+  if (!userId) return config.storageDriver === 's3' ? 's3' : 'local';
+  const settings = readSettings(config);
+  const value = settings.telegramUploadStorage && settings.telegramUploadStorage[String(userId)];
+  return value === 'local' || value === 's3' ? value : (config.storageDriver === 's3' ? 's3' : 'local');
+}
+
+function setTelegramUploadStorageDriver(config, userId, driver) {
+  const settings = readSettings(config);
+  settings.telegramUploadStorage ||= {};
+  settings.telegramUploadStorage[String(userId)] = driver === 's3' ? 's3' : 'local';
+  settings.updatedAt = new Date().toISOString();
+  writeSettings(config, settings);
+}
+
 function sendText(config, chatId, text) {
   return telegramApi(config, 'sendMessage', {
     chat_id: chatId,
@@ -1451,6 +1519,7 @@ function publicImage(image, config = { publicUrl: '' }) {
   const shouldAttachAccess = image.visibility === 'private' && config.adminToken;
   return {
     ...image,
+    storageDriver: image.storageDriver || config.storageDriver,
     tags: image.tags || [],
     url: shouldAttachAccess ? withAccessToken(url, config.adminToken) : url,
     rawUrl: shouldAttachAccess ? withAccessToken(rawUrl, config.adminToken) : rawUrl

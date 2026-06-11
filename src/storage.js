@@ -22,7 +22,7 @@ class LocalStorage {
 
   saveImage({ buffer, mime, originalName, source, owner }) {
     this.ensure();
-    const record = createImageRecord({ buffer, mime, originalName, source, owner });
+    const record = createImageRecord({ buffer, mime, originalName, source, owner, storageDriver: this.driver });
     this.writeObject(record, buffer, mime);
     return record;
   }
@@ -78,7 +78,7 @@ class S3Storage {
 
   async saveImage({ buffer, mime, originalName, source, owner }) {
     this.ensure();
-    const record = createImageRecord({ buffer, mime, originalName, source, owner, prefix: this.prefix });
+    const record = createImageRecord({ buffer, mime, originalName, source, owner, prefix: this.prefix, storageDriver: this.driver });
     await this.writeObject(record, buffer, mime);
     return record;
   }
@@ -199,7 +199,7 @@ class S3Storage {
   }
 }
 
-function createImageRecord({ buffer, mime, originalName, source, owner, prefix = '' }) {
+function createImageRecord({ buffer, mime, originalName, source, owner, prefix = '', storageDriver = 'local' }) {
   const id = randomId(10);
   const extension = extensionForMime(mime);
   const fileName = `${id}.${extension}`;
@@ -208,6 +208,7 @@ function createImageRecord({ buffer, mime, originalName, source, owner, prefix =
     id,
     fileName,
     storageKey,
+    storageDriver,
     originalName: originalName || fileName,
     mime,
     size: buffer.length,

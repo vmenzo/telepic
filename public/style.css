@@ -1218,6 +1218,20 @@ a {
   font-size: 13px;
 }
 
+.upload-target {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 78%, var(--panel));
+}
+
+.upload-target span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .notice-box {
   padding: 10px 12px;
   border: 1px solid var(--line);

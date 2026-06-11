@@ -177,7 +177,7 @@ async function route(req, res) {
   if (req.method === 'POST' && pathname === '/api/upload') {
     const auth = requireUpload(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const image = await uploadFromRequest(req, auth.actor);
+    const image = await uploadFromRequest(req, auth.actor, uploadStorageDriverFromRequest(req, url));
     return json(res, 201, { image: publicImage(image) });
   }
 
@@ -185,7 +185,7 @@ async function route(req, res) {
     const auth = requireUpload(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 32 * 1024);
-    const image = await uploadFromUrl(body.url, auth.actor);
+    const image = await uploadFromUrl(body.url, auth.actor, normalizeUploadStorageDriver(body.storageDriver));
     return json(res, 201, { image: publicImage(image) });
   }
 
@@ -469,6 +469,7 @@ async function route(req, res) {
       try {
         const file = await sourceStorage.read(image);
         await targetStorage.writeObject(image, file.buffer, file.mime || image.mime);
+        db.updateImage(image.id, { storageDriver: config.storageDriver });
         migrated.push(image.id);
       } catch (error) {
         failed.push({ id: image.id, error: error.message });
@@ -612,7 +613,7 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const settings = readSettings(config);
     const items = ensureRecycleBin(settings);
-    for (const item of items) await storage.delete(item);
+    for (const item of items) await storageForImage(item).delete(item);
     removeImagesFromAlbums(settings, items.map((item) => item.id));
     settings.recycleBin = [];
     settings.updatedAt = new Date().toISOString();
@@ -624,14 +625,15 @@ async function route(req, res) {
   if (req.method === 'POST' && pathname === `/telegram/${config.telegramWebhookSecret}`) {
     if (!config.telegramBotToken) return json(res, 503, { error: 'Telegram bot token is not configured' });
     const update = await parseJsonBody(req, config.maxUploadBytes);
-    await handleTelegramUpdate({ update, config, db, storage });
+    await handleTelegramUpdate({ update, config, db, storage: telegramStorageBridge() });
     return json(res, 200, { ok: true });
   }
 
   return json(res, 404, { error: 'Not found' });
 }
 
-async function uploadFromRequest(req, actor) {
+async function uploadFromRequest(req, actor, storageDriver = config.storageDriver) {
+  assertUploadStorageReady(storageDriver);
   const contentType = req.headers['content-type'] || '';
   let file;
 
@@ -664,7 +666,8 @@ async function uploadFromRequest(req, actor) {
     throw error;
   }
 
-  const image = await storage.saveImage({
+  const targetStorage = storageForDriver(storageDriver);
+  const image = await targetStorage.saveImage({
     buffer: file.data,
     mime: file.mime,
     originalName: file.filename,
@@ -677,7 +680,8 @@ async function uploadFromRequest(req, actor) {
   return image;
 }
 
-async function uploadFromUrl(rawUrl, actor) {
+async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver) {
+  assertUploadStorageReady(storageDriver);
   if (!rawUrl || typeof rawUrl !== 'string') {
     const error = new Error('A valid image URL is required.');
     error.statusCode = 400;
@@ -732,7 +736,8 @@ async function uploadFromUrl(rawUrl, actor) {
   }
 
   const fileName = decodeURIComponent(parsed.pathname.split('/').pop() || 'remote-image');
-  const image = await storage.saveImage({
+  const targetStorage = storageForDriver(storageDriver);
+  const image = await targetStorage.saveImage({
     buffer,
     mime,
     originalName: fileName,
@@ -747,7 +752,8 @@ async function uploadFromUrl(rawUrl, actor) {
 
 function publicImage(image) {
   const fallbackRawUrl = image.rawUrl || `${config.publicUrl}/raw/${image.id}`;
-  const storageRawUrl = typeof storage.getPublicObjectUrl === 'function' ? storage.getPublicObjectUrl(image) : '';
+  const imageStorage = storageForImage(image);
+  const storageRawUrl = typeof imageStorage.getPublicObjectUrl === 'function' ? imageStorage.getPublicObjectUrl(image) : '';
   return {
     id: image.id,
     originalName: image.originalName,
@@ -758,6 +764,7 @@ function publicImage(image) {
     owner: image.owner,
     fileName: image.fileName,
     storageKey: image.storageKey || image.fileName,
+    storageDriver: image.storageDriver || config.storageDriver,
     tags: image.tags || [],
     visibility: image.visibility,
     createdAt: image.createdAt,
@@ -777,7 +784,7 @@ async function serveImageFile(req, res, id) {
   }
   let stored;
   try {
-    stored = await storage.read(image);
+    stored = await storageForImage(image).read(image);
   } catch (error) {
     const status = /404/.test(String(error.message)) ? 404 : 502;
     return json(res, status, { error: status === 404 ? 'Image file missing' : error.message });
@@ -898,7 +905,7 @@ function restoreTrashItemWithEvent(id, actor) {
 }
 
 async function permanentlyDeleteTrashItemWithEvent(id, actor) {
-  const item = await permanentlyDeleteTrashItem(config, storage, id);
+  const item = await permanentlyDeleteTrashItem(config, imageAwareStorage(), id);
   if (!item) return null;
   db.addEvent('image.purged', { actor, id: item.id });
   return item;
@@ -1005,7 +1012,7 @@ async function storageStatusPayload() {
 async function createImageZip(images) {
   const files = [];
   for (const image of images) {
-    const stored = await storage.read(image);
+    const stored = await storageForImage(image).read(image);
     files.push({
       name: safeArchiveName(image.originalName || image.fileName || `${image.id}.bin`, image.id),
       data: stored.buffer
@@ -1139,6 +1146,58 @@ function createStorageFromSnapshot(snapshot) {
     ...snapshot
   };
   return createStorage(merged);
+}
+
+function storageForDriver(driver) {
+  const normalized = driver === 's3' ? 's3' : 'local';
+  if (normalized === config.storageDriver) return storage;
+  return createStorage({ ...config, storageDriver: normalized });
+}
+
+function storageForImage(image) {
+  return storageForDriver(image && image.storageDriver ? image.storageDriver : config.storageDriver);
+}
+
+function imageAwareStorage() {
+  return {
+    delete(item) {
+      return storageForImage(item).delete(item);
+    }
+  };
+}
+
+function telegramStorageBridge() {
+  return {
+    saveImage(payload) {
+      return storage.saveImage(payload);
+    },
+    read(image) {
+      return storageForImage(image).read(image);
+    },
+    delete(image) {
+      return storageForImage(image).delete(image);
+    },
+    forDriver(driver) {
+      return storageForDriver(driver);
+    }
+  };
+}
+
+function uploadStorageDriverFromRequest(req, url) {
+  return normalizeUploadStorageDriver(req.headers['x-storage-driver'] || url.searchParams.get('storageDriver'));
+}
+
+function normalizeUploadStorageDriver(value) {
+  return value === 'local' || value === 's3' ? value : config.storageDriver;
+}
+
+function assertUploadStorageReady(driver) {
+  if (driver !== 's3') return;
+  const missing = ['s3Bucket', 's3AccessKeyId', 's3SecretAccessKey'].filter((key) => !config[key]);
+  if (!missing.length) return;
+  const error = new Error(`Object storage is not configured: ${missing.join(', ')}`);
+  error.statusCode = 400;
+  throw error;
 }
 
 function telegramConfigPayload() {

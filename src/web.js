@@ -127,6 +127,14 @@ function htmlPage(config) {
           <span class="dropzone-title">点击或拖拽上传图片</span>
           <span class="dropzone-sub">支持多文件、粘贴上传、截图直传</span>
         </label>
+        <label class="upload-target">
+          <span>本次上传位置</span>
+          <select id="uploadStorageDriver">
+            <option value="default">跟随当前配置</option>
+            <option value="local">本地存储</option>
+            <option value="s3">对象存储</option>
+          </select>
+        </label>
         <div class="inline-form">
           <input id="fetchUrlInput" class="wide-input" placeholder="粘贴图片 URL 后抓取">
           <button id="fetchUrlButton">抓取</button>
@@ -145,12 +153,12 @@ function htmlPage(config) {
         </div>
         <p id="telegramHint" class="hint"></p>
         <div class="command-list">
+          <code>/start</code>
           <code>/panel</code>
-          <code>/list</code>
-          <code>/view</code>
-          <code>/search</code>
-          <code>/delete</code>
-          <code>/token</code>
+          <code>/stats</code>
+          <code>/system</code>
+          <code>/storage</code>
+          <code>/register</code>
         </div>
         <pre id="telegramWebhook" class="mono-box"></pre>
       </section>

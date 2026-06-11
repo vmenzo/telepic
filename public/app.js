@@ -655,6 +655,7 @@ function refreshSessionAfterActivity() {
 async function uploadFiles(files) {
   if (!files || !files.length) return;
   $('#uploadResult').textContent = '';
+  const storageDriver = selectedUploadStorageDriver();
 
   for (const file of files) {
     try {
@@ -662,7 +663,8 @@ async function uploadFiles(files) {
         method: 'POST',
         headers: {
           'content-type': file.type || 'application/octet-stream',
-          'x-file-name': safeHeaderFileName(file.name || 'upload')
+          'x-file-name': safeHeaderFileName(file.name || 'upload'),
+          'x-storage-driver': storageDriver
         },
         body: file
       });
@@ -962,11 +964,12 @@ function renderImages() {
           </a>
           <div class="asset-main">
             <strong title="${escapeHtml(image.originalName || image.id)}">${escapeHtml(image.originalName || image.id)}</strong>
-          <div class="asset-subline">ID ${image.id} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</div>
-          <div class="asset-subline">创建于 ${formatDate(image.createdAt)}</div>
+            <div class="asset-subline">ID ${image.id} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</div>
+            <div class="asset-subline">创建于 ${formatDate(image.createdAt)}</div>
             <div class="chip-row">
               <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
               <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
+              <span class="status-chip">${escapeHtml(storageDriverName(image.storageDriver))}</span>
             </div>
           </div>
         </div>
@@ -1409,10 +1412,11 @@ async function fetchUrlUpload() {
   }
 
   try {
+    const storageDriver = selectedUploadStorageDriver();
     const data = await request('/api/upload-from-url', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, storageDriver })
     });
     state.activeImageId = data.image.id;
     input.value = '';
@@ -1424,6 +1428,13 @@ async function fetchUrlUpload() {
   } catch (error) {
     result.textContent = error.message;
   }
+}
+
+function selectedUploadStorageDriver() {
+  const select = $('#uploadStorageDriver');
+  const value = select ? select.value : 'default';
+  if (value === 'local' || value === 's3') return value;
+  return state.config.storageDriver === 's3' ? 's3' : 'local';
 }
 
 async function refreshEvents() {
@@ -1780,6 +1791,7 @@ function renderImageDetail() {
         <div class="chip-row">
           <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
           <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
+          <span class="status-chip">${escapeHtml(storageDriverName(image.storageDriver))}</span>
         </div>
         <p class="muted-text">${escapeHtml(image.mime)} · ${formatBytes(image.size)}</p>
         <p class="muted-text">归属 ${escapeHtml(image.owner || '未知')} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</p>
@@ -1802,6 +1814,7 @@ function renderImageDetail() {
     <div class="detail-grid">
       ${configRow('图片 ID', image.id)}
       ${configRow('文件名', image.fileName || '未记录')}
+      ${configRow('存储位置', storageDriverName(image.storageDriver))}
       ${configRow('存储键', image.storageKey || '未记录')}
       ${configRow('归属', image.owner || '未知')}
       ${configRow('来源', sourceName(image.source))}
@@ -2119,6 +2132,10 @@ function sourceName(source) {
   if (source === 'api') return '网页/API';
   if (source === 'url') return 'URL 抓图';
   return source || '未知';
+}
+
+function storageDriverName(driver) {
+  return driver === 's3' ? '对象存储' : '本地存储';
 }
 
 function renderBatchTagSummary() {

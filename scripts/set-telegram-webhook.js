@@ -10,7 +10,7 @@ async function main() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       url: webhookUrl,
-      allowed_updates: ['message', 'edited_message']
+      allowed_updates: ['message', 'edited_message', 'callback_query']
     })
   });
   const data = await response.json();

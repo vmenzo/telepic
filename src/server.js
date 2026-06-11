@@ -379,7 +379,10 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     if (!config.telegramBotToken) return json(res, 400, { error: 'Telegram bot token is not configured' });
     const webhookUrl = `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`;
-    const result = await telegramApi(config, 'setWebhook', { url: webhookUrl });
+    const result = await telegramApi(config, 'setWebhook', {
+      url: webhookUrl,
+      allowed_updates: ['message', 'edited_message', 'callback_query']
+    });
     if (!result || !result.ok) {
       return json(res, 502, { error: result && result.description ? result.description : 'Telegram webhook registration failed' });
     }

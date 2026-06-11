@@ -9,7 +9,7 @@ const { createDb } = require('./db');
 const { parseMultipartRequest } = require('./multipart');
 const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, settingsPath, writeSettings } = require('./settings');
 const { createStorage } = require('./storage');
-const { handleTelegramUpdate, telegramApi } = require('./telegram');
+const { handleTelegramUpdate, registerTelegramBotCommands, telegramAllowedUpdates, telegramApi } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
 const { isImageMime, json, parseJsonBody, text } = require('./utils');
 const packageJson = require('../package.json');
@@ -381,13 +381,17 @@ async function route(req, res) {
     const webhookUrl = `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`;
     const result = await telegramApi(config, 'setWebhook', {
       url: webhookUrl,
-      allowed_updates: ['message', 'edited_message', 'callback_query']
+      allowed_updates: telegramAllowedUpdates()
     });
     if (!result || !result.ok) {
       return json(res, 502, { error: result && result.description ? result.description : 'Telegram webhook registration failed' });
     }
+    const commands = await registerTelegramBotCommands(config);
+    if (!commands || !commands.ok) {
+      return json(res, 502, { error: commands && commands.description ? commands.description : 'Telegram command menu registration failed' });
+    }
     db.addEvent('integration.telegram.webhook_registered', { actor: auth.actor, webhookUrl });
-    return json(res, 200, { ok: true, webhookUrl, telegram: result });
+    return json(res, 200, { ok: true, webhookUrl, telegram: result, commands });
   }
 
   if (req.method === 'POST' && pathname === '/api/integrations/telegram/test') {
@@ -1325,4 +1329,12 @@ function hasManageAccess(req, url) {
 server.listen(config.port, config.host, () => {
   console.log(`Telepic is running at http://${config.host}:${config.port}`);
   console.log(`Public URL: ${config.publicUrl}`);
+  if (config.telegramBotToken) {
+    registerTelegramBotCommands(config)
+      .then((result) => {
+        if (result && result.ok) console.log('Telegram bot command menu registered.');
+        else console.warn('Telegram bot command menu registration failed.');
+      })
+      .catch((error) => console.warn(`Telegram bot command menu registration failed: ${error.message}`));
+  }
 });

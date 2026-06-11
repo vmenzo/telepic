@@ -209,32 +209,26 @@ TELEGRAM_WEBHOOK_SECRET=
 TELEGRAM_ALLOWED_USER_IDS=
 ```
 
-注册 webhook：
+注册 webhook 并同步 Telegram 菜单命令：
 
 ```bash
 node scripts/set-telegram-webhook.js
 ```
 
-常用命令：
+Bot 以按钮控制台为主。发送 `/start` 或 `/panel` 打开控制台后，可通过按钮完成图片列表、搜索、链接抓图、相册、API 密钥、回收站、统计、日志、系统状态和存储状态管理。
+
+保留的快捷命令：
 
 ```text
-/panel
-/stats
-/list [数量]
-/search 关键词
-/view 图片ID
-/rename 图片ID 新名称
-/public 图片ID
-/private 图片ID
-/tags 图片ID 标签1,标签2
-/delete 图片ID
-/events [数量]
-/token list
-/token create
-/token delete
-/fetch 图片URL
-/link 图片ID [page|raw|markdown|html|bbcode]
+/start     启动机器人
+/panel     打开图床控制台
+/stats     查看统计概览
+/system    查看运行状态
+/storage   查看存储状态
+/register  查看账号和聊天 ID
 ```
+
+上传图片可以直接把图片发送给 Bot。需要改名、标签、删除、加入相册、生成链接格式等管理操作时，在控制台按钮中选择对应功能即可。
 
 ## 对象存储
 

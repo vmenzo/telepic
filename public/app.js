@@ -398,19 +398,21 @@ function bindEvents() {
   on('#sendTelegramTest', 'click', sendTelegramTest);
   on('#migrateStorageData', 'click', migrateStorageData);
   on('#inspectorTabs', 'click', handleInspectorTabs);
-  on('#themePreset', 'change', onThemePresetChange);
-  on('#themeQuickPicks', 'click', handleThemeQuickPick);
-  on('#saveTheme', 'click', saveThemeFromInputs);
-  on('#installTheme', 'click', installCurrentTheme);
-  on('#removeTheme', 'click', removeCurrentTheme);
-  on('#resetTheme', 'click', resetThemePreset);
-  on('#themeBackgroundFile', 'change', handleThemeBackgroundUpload);
-  on('#clearThemeBackground', 'click', clearThemeBackground);
-  on('#exportTheme', 'click', exportThemePack);
-  on('#themeImportFile', 'change', importThemePack);
-  ['themeBg', 'themePanel', 'themeInk', 'themeAccent', 'themeDanger'].forEach((id) => {
-    on(`#${id}`, 'input', previewCustomTheme);
-  });
+  if ($('#themePreset')) on('#themePreset', 'change', onThemePresetChange);
+  if ($('#themeQuickPicks')) on('#themeQuickPicks', 'click', handleThemeQuickPick);
+  if ($('#saveTheme')) on('#saveTheme', 'click', saveThemeFromInputs);
+  if ($('#installTheme')) on('#installTheme', 'click', installCurrentTheme);
+  if ($('#removeTheme')) on('#removeTheme', 'click', removeCurrentTheme);
+  if ($('#resetTheme')) on('#resetTheme', 'click', resetThemePreset);
+  if ($('#themeBackgroundFile')) on('#themeBackgroundFile', 'change', handleThemeBackgroundUpload);
+  if ($('#clearThemeBackground')) on('#clearThemeBackground', 'click', clearThemeBackground);
+  if ($('#exportTheme')) on('#exportTheme', 'click', exportThemePack);
+  if ($('#themeImportFile')) on('#themeImportFile', 'change', importThemePack);
+  if ($('#themeBg')) {
+    ['themeBg', 'themePanel', 'themeInk', 'themeAccent', 'themeDanger'].forEach((id) => {
+      on(`#${id}`, 'input', previewCustomTheme);
+    });
+  }
   document.addEventListener('paste', handlePasteUpload);
   SESSION_ACTIVITY_EVENTS.forEach((eventName) => {
     document.addEventListener(eventName, markSessionActivity, { passive: true });
@@ -2127,14 +2129,16 @@ function renderBatchTagSummary() {
 function initTheme() {
   ensureThemeLibrarySeed();
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
-  renderThemeStore();
-  renderThemePreview(state.theme);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
+  if ($('#themePreview')) renderThemePreview(state.theme);
 }
 
 function onThemePresetChange() {
-  const preset = $('#themePreset').value;
+  const presetEl = $('#themePreset');
+  if (!presetEl) return;
+  const preset = presetEl.value;
   if (preset === 'custom') {
     previewCustomTheme();
     return;
@@ -2167,8 +2171,8 @@ function applyPresetTheme(preset) {
   const themePack = themePackForPreset(preset);
   state.theme = normalizeTheme(themePack || { ...state.theme, preset, ...THEME_PRESETS[preset] });
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(preset);
   persistTheme();
 }
 
@@ -2177,8 +2181,8 @@ function applyThemeFromCard(themeId) {
   if (!theme) return;
   state.theme = normalizeTheme(theme);
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   toast(`已切换到${state.theme.label}主题`);
 }
@@ -2194,10 +2198,10 @@ async function installThemeById(themeId) {
   upsertThemeInLibrary(installedTheme);
   state.theme = installedTheme;
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
   persistTheme();
-  renderThemeStore();
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
   refreshConfig().catch(() => {});
   toast(`已将 ${state.theme.label} 安装到我的主题`);
 }
@@ -2216,10 +2220,10 @@ async function cloneThemeToLibrary(themeId) {
   state.theme = cloned;
   upsertThemeInLibrary(cloned);
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks('custom');
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks('custom');
   persistTheme();
-  renderThemeStore();
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
   refreshConfig().catch(() => {});
   toast(`已复制 ${theme.label} 到我的主题`);
 }
@@ -2290,9 +2294,9 @@ function previewCustomTheme() {
     source: 'custom'
   };
   applyTheme(preview, false);
-  $('#themePreset').value = 'custom';
-  syncThemeQuickPicks('custom');
-  $('#themeBadge').textContent = '自定义';
+  if ($('#themePreset')) $('#themePreset').value = 'custom';
+  if ($('#themeQuickPicks')) syncThemeQuickPicks('custom');
+  if ($('#themeBadge')) $('#themeBadge').textContent = '自定义';
 }
 
 function handleThemeBackgroundUpload(event) {
@@ -2316,9 +2320,9 @@ function handleThemeBackgroundUpload(event) {
       source: 'custom'
     };
     applyTheme(state.theme);
-    syncThemeQuickPicks('custom');
+    if ($('#themeQuickPicks')) syncThemeQuickPicks('custom');
     persistTheme();
-    $('#themePreset').value = 'custom';
+    if ($('#themePreset')) $('#themePreset').value = 'custom';
     setThemeStorageState('背景图待保存');
     toast('背景图片已应用，点击保存主题同步到云端');
   };
@@ -2364,10 +2368,10 @@ function applyTheme(theme, updateState = true) {
     : '0 16px 34px rgba(16, 24, 40, 0.10)');
   document.body.classList.toggle('theme-dark', luminance(theme.bg) < 0.35);
   document.body.classList.toggle('theme-photo', Boolean(theme.image));
-  $('#themeBadge').textContent = theme.label || themeName(theme.preset);
-  renderThemePreview(theme);
-  renderThemeStore();
-  syncThemeQuickPicks(theme.preset);
+  if ($('#themeBadge')) $('#themeBadge').textContent = theme.label || themeName(theme.preset);
+  if ($('#themePreview')) renderThemePreview(theme);
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(theme.preset);
 }
 
 function themePackForPreset(preset) {
@@ -2514,11 +2518,11 @@ function importThemePack(event) {
       state.theme = normalizeTheme(parsed);
       upsertThemeInLibrary(state.theme, false);
       applyTheme(state.theme);
-      syncThemeInputs(state.theme);
-      syncThemeQuickPicks(state.theme.preset);
-      renderThemeStore();
+      if ($('#themePreset')) syncThemeInputs(state.theme);
+      if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
+      if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
       persistTheme();
-      $('#themePreset').value = state.theme.preset || 'custom';
+      if ($('#themePreset')) $('#themePreset').value = state.theme.preset || 'custom';
       toast('主题包已导入');
     } catch (error) {
       toast('主题包导入失败');
@@ -2533,6 +2537,7 @@ function importThemePack(event) {
 }
 
 function syncThemeInputs(theme) {
+  if (!$('#themePreset')) return;
   $('#themePreset').value = theme.preset || 'gallery';
   $('#themeBg').value = theme.bg;
   $('#themePanel').value = theme.panel;
@@ -2559,13 +2564,13 @@ async function loadServerTheme() {
   }
   if (!data.theme) {
     setThemeStorageState('暂无云端主题');
-    renderThemeStore();
+    if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
     return;
   }
   state.theme = normalizeTheme(data.theme);
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   setThemeStorageState('云端主题已加载');
 }
@@ -2585,8 +2590,8 @@ async function saveThemeToCloud() {
   state.theme = normalizeTheme(data.theme || state.theme);
   state.themeLibrary = mergeThemeLibraries(data.library || []);
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   setThemeStorageState('已云端保存');
   refreshConfig().catch(() => {});
@@ -2605,8 +2610,8 @@ async function installCurrentTheme() {
   });
   upsertThemeInLibrary(state.theme);
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  renderThemeStore();
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
   persistTheme();
   refreshConfig().catch(() => {});
   toast('主题已加入商店');
@@ -2629,10 +2634,10 @@ async function removeCurrentTheme() {
   state.themeLibrary = nextLibrary;
   state.theme = normalizeTheme(themePackForPreset('gallery'));
   applyTheme(state.theme);
-  syncThemeInputs(state.theme);
-  syncThemeQuickPicks(state.theme.preset);
+  if ($('#themePreset')) syncThemeInputs(state.theme);
+  if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
   persistTheme();
-  renderThemeStore();
+  if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
   refreshConfig().catch(() => {});
   if (state.adminToken) await saveThemeToCloud();
   else setThemeStorageState('本地商店已更新');

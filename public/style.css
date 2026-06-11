@@ -806,6 +806,17 @@ a {
   background: var(--soft);
 }
 
+.theme-card-main {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: contents;
+  padding: 0;
+  text-align: left;
+}
+
 .theme-card-cover {
   display: block;
   min-height: 72px;
@@ -843,10 +854,18 @@ a {
   justify-content: space-between;
   gap: 8px;
   margin-top: 6px;
+  flex-wrap: wrap;
 }
 
 .theme-card-actions small {
   color: var(--muted);
+}
+
+.theme-card-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .theme-card-actions button {

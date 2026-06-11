@@ -136,6 +136,92 @@ const THEME_LIBRARY = {
   }
 };
 
+const RECOMMENDED_THEME_PACKS = {
+  auroraDeck: {
+    id: 'auroraDeck',
+    preset: 'custom',
+    label: '极光控制台',
+    author: '社区精选',
+    category: '推荐主题',
+    description: '偏冷调的科技感主题，适合做对象存储、Bot 和系统状态这类信息面板。',
+    cover: '',
+    bg: '#e8eef6',
+    panel: '#fdfefe',
+    ink: '#102030',
+    accent: '#3d84ff',
+    danger: '#dd5f57',
+    backdrop: 'radial-gradient(circle at 14% 18%, rgba(61,132,255,0.24), transparent 28%), radial-gradient(circle at 82% 18%, rgba(104,211,255,0.22), transparent 24%), linear-gradient(135deg, #ebf4ff 0%, #f8fbff 52%, #ebf1f8 100%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.10))',
+    panelAlpha: 0.84,
+    blur: 22,
+    image: ''
+  },
+  cinemaAmber: {
+    id: 'cinemaAmber',
+    preset: 'custom',
+    label: '电影琥珀',
+    author: '社区精选',
+    category: '推荐主题',
+    description: '深色基底配暖金强调，适合夜间管理和内容审核场景，整体更稳一些。',
+    cover: '',
+    bg: '#181413',
+    panel: '#221b19',
+    ink: '#f4ede8',
+    accent: '#d39a4a',
+    danger: '#f06f62',
+    backdrop: 'radial-gradient(circle at 14% 20%, rgba(211,154,74,0.24), transparent 28%), radial-gradient(circle at 84% 14%, rgba(255,218,142,0.12), transparent 22%), linear-gradient(135deg, #181413 0%, #241b18 54%, #151212 100%)',
+    overlay: 'linear-gradient(180deg, rgba(12,8,6,0.16), rgba(12,8,6,0.32))',
+    panelAlpha: 0.84,
+    blur: 20,
+    image: ''
+  },
+  paperSignal: {
+    id: 'paperSignal',
+    preset: 'custom',
+    label: '纸感信号',
+    author: '社区精选',
+    category: '推荐主题',
+    description: '轻纸感背景和红蓝对比点缀，风格更鲜明，适合想要一点设计感的站长。',
+    cover: '',
+    bg: '#f5f2eb',
+    panel: '#fffdfa',
+    ink: '#1d2329',
+    accent: '#2c78c6',
+    danger: '#cb4d49',
+    backdrop: 'linear-gradient(120deg, rgba(255,255,255,0.74), rgba(242,234,224,0.54)), repeating-linear-gradient(0deg, rgba(44,120,198,0.035) 0 1px, transparent 1px 88px), radial-gradient(circle at 84% 16%, rgba(203,77,73,0.10), transparent 24%)',
+    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0.12))',
+    panelAlpha: 0.9,
+    blur: 14,
+    image: ''
+  },
+  neonHarbor: {
+    id: 'neonHarbor',
+    preset: 'custom',
+    label: '霓虹港湾',
+    author: '社区精选',
+    category: '推荐主题',
+    description: '紫蓝交替的夜景氛围，适合想让面板更有玩家主题味道的使用者。',
+    cover: '',
+    bg: '#131722',
+    panel: '#191f2e',
+    ink: '#eef3ff',
+    accent: '#61c4ff',
+    danger: '#ff7b82',
+    backdrop: 'radial-gradient(circle at 18% 18%, rgba(97,196,255,0.20), transparent 30%), radial-gradient(circle at 84% 12%, rgba(176,118,255,0.18), transparent 26%), linear-gradient(135deg, #10141d 0%, #191d2c 48%, #121722 100%)',
+    overlay: 'linear-gradient(180deg, rgba(10,14,22,0.16), rgba(10,14,22,0.32))',
+    panelAlpha: 0.82,
+    blur: 22,
+    image: ''
+  }
+};
+
+const THEME_SOURCE_LABELS = {
+  builtin: '内置主题',
+  recommended: '推荐主题',
+  installed: '我的主题',
+  custom: '自定义草稿'
+};
+
 const DEFAULT_STATS = {
   images: 0,
   publicImages: 0,
@@ -2059,15 +2145,19 @@ function onThemePresetChange() {
 }
 
 function handleThemeQuickPick(event) {
-  const installButton = event.target.closest('[data-theme-action="install"]');
-  if (installButton) {
+  const actionButton = event.target.closest('[data-theme-action]');
+  if (actionButton) {
     event.preventDefault();
     event.stopPropagation();
-    applyThemeFromCard(installButton.dataset.themeId);
+    const themeId = actionButton.dataset.themeId;
+    const action = actionButton.dataset.themeAction;
+    if (action === 'apply') applyThemeFromCard(themeId);
+    if (action === 'install') installThemeById(themeId);
+    if (action === 'clone') cloneThemeToLibrary(themeId);
     return;
   }
 
-  const button = event.target.closest('[data-theme-id]');
+  const button = event.target.closest('.theme-card-main[data-theme-id], .theme-card[data-theme-id]');
   if (!button) return;
   applyThemeFromCard(button.dataset.themeId);
 }
@@ -2093,6 +2183,47 @@ function applyThemeFromCard(themeId) {
   toast(`已切换到${state.theme.label}主题`);
 }
 
+async function installThemeById(themeId) {
+  const theme = themeLibraryList().find((item) => item.id === themeId);
+  if (!theme) return;
+  const installedTheme = normalizeTheme({
+    ...theme,
+    source: 'installed',
+    preset: theme.preset === 'custom' ? 'custom' : theme.preset
+  });
+  upsertThemeInLibrary(installedTheme);
+  state.theme = installedTheme;
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
+  persistTheme();
+  renderThemeStore();
+  refreshConfig().catch(() => {});
+  toast(`已将 ${state.theme.label} 安装到我的主题`);
+}
+
+async function cloneThemeToLibrary(themeId) {
+  const theme = themeLibraryList().find((item) => item.id === themeId);
+  if (!theme) return;
+  const cloned = normalizeTheme({
+    ...theme,
+    id: normalizeThemeId(`${theme.id}-copy`),
+    label: `${theme.label} 副本`,
+    author: state.adminUsername || '本地用户',
+    source: 'installed',
+    preset: 'custom'
+  });
+  state.theme = cloned;
+  upsertThemeInLibrary(cloned);
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks('custom');
+  persistTheme();
+  renderThemeStore();
+  refreshConfig().catch(() => {});
+  toast(`已复制 ${theme.label} 到我的主题`);
+}
+
 async function saveThemeFromInputs() {
   state.theme = {
     id: state.theme.id || `custom_${Date.now().toString(36)}`,
@@ -2111,13 +2242,15 @@ async function saveThemeFromInputs() {
     overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
     panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
     blur: state.theme.blur || THEME_PRESETS.gallery.blur,
-    image: state.theme.image || ''
+    image: state.theme.image || '',
+    source: 'installed'
   };
   applyTheme(state.theme);
   syncThemeQuickPicks('custom');
   persistTheme();
   $('#themePreset').value = 'custom';
   await saveThemeToCloud();
+  refreshConfig().catch(() => {});
 }
 
 function resetThemePreset() {
@@ -2153,7 +2286,8 @@ function previewCustomTheme() {
     overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
     panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
     blur: state.theme.blur || THEME_PRESETS.gallery.blur,
-    image: state.theme.image || ''
+    image: state.theme.image || '',
+    source: 'custom'
   };
   applyTheme(preview, false);
   $('#themePreset').value = 'custom';
@@ -2178,7 +2312,8 @@ function handleThemeBackgroundUpload(event) {
       ...state.theme,
       preset: 'custom',
       cover: String(reader.result || ''),
-      image: String(reader.result || '')
+      image: String(reader.result || ''),
+      source: 'custom'
     };
     applyTheme(state.theme);
     syncThemeQuickPicks('custom');
@@ -2192,7 +2327,7 @@ function handleThemeBackgroundUpload(event) {
 }
 
 function clearThemeBackground() {
-  state.theme = { ...state.theme, image: '' };
+  state.theme = { ...state.theme, image: '', source: state.theme.source || 'custom' };
   applyTheme(state.theme);
   persistTheme();
   const input = $('#themeBackgroundFile');
@@ -2238,19 +2373,33 @@ function applyTheme(theme, updateState = true) {
 function themePackForPreset(preset) {
   const installed = state.themeLibrary.find((item) => item.preset === preset || item.id === preset);
   if (installed) return { ...installed };
+  if (RECOMMENDED_THEME_PACKS[preset]) return { ...RECOMMENDED_THEME_PACKS[preset] };
   return THEME_LIBRARY[preset] ? { ...THEME_LIBRARY[preset] } : null;
 }
 
 function enrichTheme(theme) {
   const base = theme && theme.preset && THEME_LIBRARY[theme.preset] ? THEME_LIBRARY[theme.preset] : null;
+  const recommended = theme && theme.id && RECOMMENDED_THEME_PACKS[theme.id] ? RECOMMENDED_THEME_PACKS[theme.id] : null;
+  const builtin = theme && theme.id && THEME_LIBRARY[theme.id] ? THEME_LIBRARY[theme.id] : null;
+  const resolvedBase = recommended || builtin || base;
+  const themeId = String(theme && theme.id || resolvedBase && resolvedBase.id || `custom_${Date.now().toString(36)}`);
+  const source = String(
+    theme && theme.source
+    || (builtin ? 'builtin' : '')
+    || (recommended ? 'recommended' : '')
+    || (theme && theme.id && theme.id.startsWith('custom_') ? 'custom' : '')
+    || (theme && theme.preset === 'custom' ? 'installed' : '')
+    || (base ? 'builtin' : 'custom')
+  );
   return {
-    id: String(theme && theme.id || base && base.id || `custom_${Date.now().toString(36)}`),
-    preset: String(theme && theme.preset || base && base.preset || 'custom'),
-    label: String(theme && theme.label || base && base.label || '自定义主题'),
-    author: String(theme && theme.author || base && base.author || '本地用户'),
-    category: String(theme && theme.category || base && base.category || '自定义'),
-    description: String(theme && theme.description || base && base.description || ''),
-    cover: String(theme && theme.cover || base && base.cover || ''),
+    id: themeId,
+    preset: String(theme && theme.preset || resolvedBase && resolvedBase.preset || 'custom'),
+    label: String(theme && theme.label || resolvedBase && resolvedBase.label || '自定义主题'),
+    author: String(theme && theme.author || resolvedBase && resolvedBase.author || '本地用户'),
+    category: String(theme && theme.category || resolvedBase && resolvedBase.category || '自定义'),
+    description: String(theme && theme.description || resolvedBase && resolvedBase.description || ''),
+    cover: String(theme && theme.cover || resolvedBase && resolvedBase.cover || ''),
+    source,
     bg: theme.bg,
     panel: theme.panel,
     ink: theme.ink,
@@ -2265,10 +2414,16 @@ function enrichTheme(theme) {
 }
 
 function themeLibraryList() {
-  const installed = state.themeLibrary.map((theme) => enrichTheme(theme));
+  const installedIds = new Set(state.themeLibrary.map((theme) => String(theme.id)));
+  const installed = state.themeLibrary.map((theme) => enrichTheme({ ...theme, source: 'installed' }));
+  const builtin = Object.values(THEME_LIBRARY).map((theme) => enrichTheme({ ...theme, source: 'builtin' }));
+  const recommended = Object.values(RECOMMENDED_THEME_PACKS)
+    .filter((theme) => !installedIds.has(theme.id))
+    .map((theme) => enrichTheme({ ...theme, source: 'recommended' }));
   const current = enrichTheme(state.theme);
-  if (installed.some((theme) => theme.id === current.id)) return installed;
-  return [current, ...installed];
+  const combined = [...installed, ...builtin, ...recommended];
+  if (combined.some((theme) => theme.id === current.id)) return dedupeThemes(combined);
+  return dedupeThemes([{ ...current, source: current.source || 'custom' }, ...combined]);
 }
 
 function renderThemeStore() {
@@ -2278,12 +2433,13 @@ function renderThemeStore() {
   const theme = enrichTheme(state.theme);
   const themes = themeLibraryList();
   const installedCount = state.themeLibrary.length;
+  const recommendedCount = Object.keys(RECOMMENDED_THEME_PACKS).length;
   if (showcase) {
     showcase.innerHTML = `
       <div class="theme-showcase-cover" style="background:${escapeHtml(theme.backdrop || theme.bg)}; ${theme.image ? `background-image:url('${escapeHtml(theme.image)}'); background-size:cover; background-position:center;` : ''}"></div>
       <div class="theme-showcase-body">
         <strong>${escapeHtml(theme.label)}</strong>
-        <span>${escapeHtml(theme.author || '本地用户')} · ${escapeHtml(theme.category || '自定义')}</span>
+        <span>${escapeHtml(theme.author || '本地用户')} · ${escapeHtml(theme.category || '自定义')} · ${escapeHtml(THEME_SOURCE_LABELS[theme.source] || '主题')}</span>
         <p>${escapeHtml(theme.description || '可在这里编辑、保存并导入导出完整主题包。')}</p>
       </div>
     `;
@@ -2292,33 +2448,45 @@ function renderThemeStore() {
     meta.innerHTML = `
       <div class="theme-meta-card">
         <strong>${installedCount}</strong>
-        <span>已安装主题</span>
+        <span>我的主题</span>
       </div>
       <div class="theme-meta-card">
-        <strong>${theme.id === 'custom' || theme.preset === 'custom' ? '自定义' : '商店主题'}</strong>
-        <span>当前来源</span>
+        <strong>${recommendedCount}</strong>
+        <span>推荐主题</span>
       </div>
       <div class="theme-meta-card">
         <strong>${state.adminToken ? '已连接' : '未登录'}</strong>
-        <span>云端同步状态</span>
+        <span>${theme.source === 'recommended' ? '当前可安装' : '云端同步状态'}</span>
       </div>
     `;
   }
   if (store) {
-    store.innerHTML = themes.map((item) => `
-      <button type="button" class="theme-card ${item.id === theme.id ? 'is-active' : ''}" data-theme-id="${escapeHtml(item.id)}">
-        <span class="theme-card-cover" style="background:${escapeHtml(item.backdrop || item.bg)}; ${item.image ? `background-image:url('${escapeHtml(item.image)}'); background-size:cover; background-position:center;` : ''}"></span>
-        <span class="theme-card-body">
-          <strong>${escapeHtml(item.label)}</strong>
-          <small>${escapeHtml(item.author || 'Telepic')}</small>
-          <span>${escapeHtml(item.description || '')}</span>
+    store.innerHTML = themes.map((item) => {
+      const active = item.id === theme.id;
+      const installed = isThemeInstalled(item.id);
+      const builtin = item.source === 'builtin';
+      const recommendedTheme = item.source === 'recommended';
+      const secondaryLabel = recommendedTheme ? (installed ? '已安装' : '安装到我的主题') : '复制到我的主题';
+      return `
+        <article class="theme-card ${active ? 'is-active' : ''}" data-theme-id="${escapeHtml(item.id)}" data-theme-source="${escapeHtml(item.source || '')}">
+          <button type="button" class="theme-card-main" data-theme-id="${escapeHtml(item.id)}">
+            <span class="theme-card-cover" style="background:${escapeHtml(item.backdrop || item.bg)}; ${item.image ? `background-image:url('${escapeHtml(item.image)}'); background-size:cover; background-position:center;` : ''}"></span>
+            <span class="theme-card-body">
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${escapeHtml(item.author || 'Telepic')}</small>
+              <span>${escapeHtml(item.description || '')}</span>
+            </span>
+          </button>
           <span class="theme-card-actions">
-            <small>${escapeHtml(item.category || '自定义')}</small>
-            <button type="button" class="secondary" data-theme-action="install" data-theme-id="${escapeHtml(item.id)}">${item.id === theme.id ? '当前使用' : '启用'}</button>
+            <small>${escapeHtml(THEME_SOURCE_LABELS[item.source] || item.category || '主题')}</small>
+            <span class="theme-card-buttons">
+              <button type="button" class="secondary" data-theme-action="apply" data-theme-id="${escapeHtml(item.id)}">${active ? '当前使用' : '启用'}</button>
+              ${!builtin ? `<button type="button" class="secondary" data-theme-action="${recommendedTheme && !installed ? 'install' : 'clone'}" data-theme-id="${escapeHtml(item.id)}">${escapeHtml(secondaryLabel)}</button>` : ''}
+            </span>
           </span>
-        </span>
-      </button>
-    `).join('');
+        </article>
+      `;
+    }).join('');
   }
 }
 
@@ -2384,7 +2552,11 @@ function persistTheme() {
 
 async function loadServerTheme() {
   const data = await request('/api/settings/theme');
-  state.themeLibrary = mergeThemeLibraries(data.library || []);
+  if (Array.isArray(data.library) && data.library.length) {
+    state.themeLibrary = mergeThemeLibraries(data.library);
+  } else if (!state.themeLibrary.length) {
+    state.themeLibrary = [];
+  }
   if (!data.theme) {
     setThemeStorageState('暂无云端主题');
     renderThemeStore();
@@ -2417,6 +2589,7 @@ async function saveThemeToCloud() {
   syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   setThemeStorageState('已云端保存');
+  refreshConfig().catch(() => {});
   toast('主题已保存到云端');
 }
 
@@ -2435,6 +2608,7 @@ async function installCurrentTheme() {
   syncThemeInputs(state.theme);
   renderThemeStore();
   persistTheme();
+  refreshConfig().catch(() => {});
   toast('主题已加入商店');
 }
 
@@ -2459,6 +2633,7 @@ async function removeCurrentTheme() {
   syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   renderThemeStore();
+  refreshConfig().catch(() => {});
   if (state.adminToken) await saveThemeToCloud();
   else setThemeStorageState('本地商店已更新');
   toast('主题已从商店移除');
@@ -2483,6 +2658,7 @@ function normalizeTheme(theme) {
     category: String(theme.category || '自定义'),
     description: String(theme.description || ''),
     cover: String(theme.cover || theme.image || ''),
+    source: String(theme.source || 'custom'),
     bg: normalizeColor(theme.bg, THEME_PRESETS.gallery.bg),
     panel: normalizeColor(theme.panel, THEME_PRESETS.gallery.panel),
     ink: normalizeColor(theme.ink, THEME_PRESETS.gallery.ink),
@@ -2497,23 +2673,36 @@ function normalizeTheme(theme) {
 }
 
 function ensureThemeLibrarySeed() {
-  if (state.themeLibrary.length) {
-    state.themeLibrary = mergeThemeLibraries(state.themeLibrary);
-    return;
-  }
-  state.themeLibrary = mergeThemeLibraries(Object.values(THEME_LIBRARY));
+  state.themeLibrary = mergeThemeLibraries(state.themeLibrary);
 }
 
 function mergeThemeLibraries(list) {
   const merged = [];
   const seen = new Set();
-  [...Object.values(THEME_LIBRARY), ...(Array.isArray(list) ? list : [])].forEach((theme) => {
+  (Array.isArray(list) ? list : []).forEach((theme) => {
     const normalized = normalizeTheme(theme);
+    if (Object.prototype.hasOwnProperty.call(THEME_LIBRARY, normalized.id)) return;
     if (!normalized.id || seen.has(normalized.id)) return;
     seen.add(normalized.id);
     merged.push(normalized);
   });
   return merged;
+}
+
+function dedupeThemes(list) {
+  const seen = new Set();
+  const output = [];
+  (Array.isArray(list) ? list : []).forEach((theme) => {
+    const normalized = enrichTheme(theme);
+    if (!normalized.id || seen.has(normalized.id)) return;
+    seen.add(normalized.id);
+    output.push(normalized);
+  });
+  return output;
+}
+
+function isThemeInstalled(themeId) {
+  return state.themeLibrary.some((item) => item.id === themeId);
 }
 
 function normalizeThemeId(value) {

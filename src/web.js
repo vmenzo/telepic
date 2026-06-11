@@ -781,6 +781,20 @@ function htmlPage(config) {
       focus: { bg: '#11161a', panel: '#171d22', ink: '#e9eef0', accent: '#58b899', danger: '#ef7868', label: '暗场工作台' },
       botanical: { bg: '#edf3ef', panel: '#ffffff', ink: '#182126', accent: '#237a57', danger: '#c0463a', label: '植物玻璃' }
     };
+    window.TELEPIC_THEME_LIBRARY = {
+      gallery: { id: 'gallery', preset: 'gallery', label: '艺廊白', author: 'Telepic', category: '内置主题', description: '明亮克制的策展风格。' },
+      coast: { id: 'coast', preset: 'coast', label: '海岸玻璃', author: 'Telepic', category: '内置主题', description: '轻盈透明的日常管理面板。' },
+      studio: { id: 'studio', preset: 'studio', label: '影棚灰', author: 'Telepic', category: '内置主题', description: '偏专业控制台的中性灰主题。' },
+      dusk: { id: 'dusk', preset: 'dusk', label: '暮色柔光', author: 'Telepic', category: '内置主题', description: '暖色柔和，层次更细腻。' },
+      focus: { id: 'focus', preset: 'focus', label: '暗场工作台', author: 'Telepic', category: '内置主题', description: '适合夜间值守和密集操作。' },
+      botanical: { id: 'botanical', preset: 'botanical', label: '植物玻璃', author: 'Telepic', category: '内置主题', description: '清爽自然，更轻松一点。' }
+    };
+    window.TELEPIC_THEME_RECOMMENDED = {
+      auroraDeck: { id: 'auroraDeck', preset: 'custom', label: '极光控制台', author: '社区精选', category: '推荐主题', description: '冷调科技感，更适合系统面板和集成页面。', bg: '#e8eef6', panel: '#fdfefe', ink: '#102030', accent: '#3d84ff', danger: '#dd5f57' },
+      cinemaAmber: { id: 'cinemaAmber', preset: 'custom', label: '电影琥珀', author: '社区精选', category: '推荐主题', description: '深色基底配暖金强调，夜间观感更稳。', bg: '#181413', panel: '#221b19', ink: '#f4ede8', accent: '#d39a4a', danger: '#f06f62' },
+      paperSignal: { id: 'paperSignal', preset: 'custom', label: '纸感信号', author: '社区精选', category: '推荐主题', description: '更有设计感，也不至于太花。', bg: '#f5f2eb', panel: '#fffdfa', ink: '#1d2329', accent: '#2c78c6', danger: '#cb4d49' },
+      neonHarbor: { id: 'neonHarbor', preset: 'custom', label: '霓虹港湾', author: '社区精选', category: '推荐主题', description: '偏玩家风格的夜景主题。', bg: '#131722', panel: '#191f2e', ink: '#eef3ff', accent: '#61c4ff', danger: '#ff7b82' }
+    };
     (function () {
       function qs(selector) { return document.querySelector(selector); }
       function qsa(selector) { return document.querySelectorAll(selector); }
@@ -822,6 +836,79 @@ function htmlPage(config) {
         authHeaders(xhr);
         if (body && !(body instanceof FormData)) xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.send(body instanceof FormData ? body : (body ? JSON.stringify(body) : null));
+      }
+      function loadThemeLibrary() {
+        try {
+          var raw = localStorage.getItem('telepic.themeLibrary');
+          var parsed = raw ? JSON.parse(raw) : [];
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+          return [];
+        }
+      }
+      function saveThemeLibrary(list) {
+        try { localStorage.setItem('telepic.themeLibrary', JSON.stringify(Array.isArray(list) ? list : [])); } catch (error) {}
+      }
+      function themeCardList() {
+        var builtins = Object.keys(window.TELEPIC_THEME_LIBRARY || {}).map(function (key) {
+          var base = window.TELEPIC_THEME_LIBRARY[key] || {};
+          var presetTheme = window.TELEPIC_THEME_PRESETS[base.preset] || {};
+          return Object.assign({ source: 'builtin' }, base, presetTheme);
+        });
+        var installed = loadThemeLibrary().map(function (item) { return Object.assign({ source: 'installed' }, item); });
+        var installedIds = {};
+        var i;
+        for (i = 0; i < installed.length; i += 1) installedIds[installed[i].id] = true;
+        var recommended = Object.keys(window.TELEPIC_THEME_RECOMMENDED || {}).filter(function (key) {
+          return !installedIds[key];
+        }).map(function (key) {
+          return Object.assign({ source: 'recommended' }, window.TELEPIC_THEME_RECOMMENDED[key]);
+        });
+        return installed.concat(builtins).concat(recommended);
+      }
+      function renderFallbackThemeStore(currentId) {
+        var store = qs('#themeQuickPicks');
+        var meta = qs('#themeLibraryMeta');
+        var items = themeCardList();
+        if (meta) {
+          meta.innerHTML = [
+            '<div class="theme-meta-card"><strong>' + loadThemeLibrary().length + '</strong><span>我的主题</span></div>',
+            '<div class="theme-meta-card"><strong>' + Object.keys(window.TELEPIC_THEME_RECOMMENDED || {}).length + '</strong><span>推荐主题</span></div>',
+            '<div class="theme-meta-card"><strong>' + (localStorage.getItem('telepic.adminToken') ? '已连接' : '未登录') + '</strong><span>云端同步状态</span></div>'
+          ].join('');
+        }
+        if (!store) return;
+        store.innerHTML = items.map(function (item) {
+          var active = item.id === currentId || item.preset === currentId;
+          var installed = item.source === 'installed';
+          var builtin = item.source === 'builtin';
+          var actionLabel = item.source === 'recommended' ? '安装到我的主题' : '复制到我的主题';
+          return ''
+            + '<article class="theme-card' + (active ? ' is-active' : '') + '" data-theme-id="' + escapeHtml(item.id) + '" data-theme-source="' + escapeHtml(item.source || '') + '">'
+            +   '<button type="button" class="theme-card-main" data-theme-id="' + escapeHtml(item.id) + '">'
+            +     '<span class="theme-card-cover" style="background:' + escapeHtml(item.bg || '#eef1ee') + '"></span>'
+            +     '<span class="theme-card-body">'
+            +       '<strong>' + escapeHtml(item.label || item.id) + '</strong>'
+            +       '<small>' + escapeHtml(item.author || 'Telepic') + '</small>'
+            +       '<span>' + escapeHtml(item.description || '') + '</span>'
+            +     '</span>'
+            +   '</button>'
+            +   '<span class="theme-card-actions">'
+            +     '<small>' + escapeHtml(item.category || (builtin ? '内置主题' : installed ? '我的主题' : '推荐主题')) + '</small>'
+            +     '<span class="theme-card-buttons">'
+            +       '<button type="button" class="secondary" data-theme-action="apply" data-theme-id="' + escapeHtml(item.id) + '">启用</button>'
+            +       (!builtin ? '<button type="button" class="secondary" data-theme-action="' + (item.source === 'recommended' ? 'install' : 'clone') + '" data-theme-id="' + escapeHtml(item.id) + '">' + escapeHtml(actionLabel) + '</button>' : '')
+            +     '</span>'
+            +   '</span>'
+            + '</article>';
+        }).join('');
+      }
+      function themeById(themeId) {
+        var items = themeCardList();
+        for (var i = 0; i < items.length; i += 1) {
+          if (items[i].id === themeId) return items[i];
+        }
+        return null;
       }
       function renderSystemConfig(data) {
         var target = qs('#systemConfig');
@@ -1102,7 +1189,7 @@ function htmlPage(config) {
         reader.readAsArrayBuffer(file);
       }
       function applyTheme(name) {
-        var theme = window.TELEPIC_THEME_PRESETS[name];
+        var theme = typeof name === 'string' ? (themeById(name) || window.TELEPIC_THEME_PRESETS[name]) : name;
         var root = document.documentElement;
         if (!theme || !root) return;
         root.style.setProperty('--bg', theme.bg);
@@ -1111,16 +1198,16 @@ function htmlPage(config) {
         root.style.setProperty('--accent', theme.accent);
         root.style.setProperty('--danger', theme.danger);
         var badge = qs('#themeBadge');
+        var themeId = theme.id || theme.preset || name;
         if (badge) badge.textContent = theme.label;
         var preset = qs('#themePreset');
-        if (preset) preset.value = name;
-        for (var i = 0; i < qsa('[data-theme-preset]').length; i += 1) {
-          var button = qsa('[data-theme-preset]')[i];
-          button.classList.toggle('is-active', button.getAttribute('data-theme-preset') === name);
-        }
+        if (preset) preset.value = theme.preset && window.TELEPIC_THEME_PRESETS[theme.preset] ? theme.preset : 'custom';
+        renderFallbackThemeStore(themeId);
         try {
           localStorage.setItem('telepic.theme', JSON.stringify({
-            preset: name,
+            id: themeId,
+            preset: theme.preset || name,
+            label: theme.label || '',
             bg: theme.bg,
             panel: theme.panel,
             ink: theme.ink,
@@ -1417,9 +1504,31 @@ function htmlPage(config) {
         var quickPicks = qs('#themeQuickPicks');
         if (quickPicks) {
           quickPicks.addEventListener('click', function (event) {
-            var button = event.target.closest('[data-theme-preset]');
+            var actionButton = event.target.closest('[data-theme-action]');
+            var button;
+            var themeId;
+            var theme;
+            var library;
+            if (actionButton) {
+              themeId = actionButton.getAttribute('data-theme-id');
+              theme = themeById(themeId);
+              if (!theme) return;
+              if (actionButton.getAttribute('data-theme-action') === 'apply') {
+                applyTheme(theme);
+              } else {
+                library = loadThemeLibrary();
+                if (!library.some(function (item) { return item.id === theme.id; })) library.unshift(theme);
+                saveThemeLibrary(library);
+                renderFallbackThemeStore(theme.id);
+                setRuntime(actionButton.getAttribute('data-theme-action') === 'install' ? '推荐主题已加入我的主题' : '主题副本已保存到我的主题');
+              }
+              return;
+            }
+            button = event.target.closest('[data-theme-id]');
             if (!button) return;
-            applyTheme(button.getAttribute('data-theme-preset'));
+            theme = themeById(button.getAttribute('data-theme-id'));
+            if (!theme) return;
+            applyTheme(theme);
             setRuntime('主题切换正常');
           });
         }
@@ -1436,9 +1545,10 @@ function htmlPage(config) {
           var rawTheme = localStorage.getItem('telepic.theme');
           if (rawTheme) {
             var parsed = JSON.parse(rawTheme);
-            if (parsed && parsed.preset && window.TELEPIC_THEME_PRESETS[parsed.preset]) applyTheme(parsed.preset);
+            if (parsed && (parsed.id || parsed.preset)) applyTheme(parsed.id || parsed.preset);
           }
         } catch (error) {}
+        renderFallbackThemeStore('gallery');
         loadConfig();
         loadStats();
         loadImages();

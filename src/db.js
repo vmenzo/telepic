@@ -129,6 +129,7 @@ class JsonDb {
   addEvent(type, details) {
     this.state.events.unshift({ id: randomId(8), type, details, createdAt: now() });
     this.state.events = this.state.events.slice(0, 500);
+    this.save();
   }
 
   publicToken(token) {

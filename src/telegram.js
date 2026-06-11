@@ -883,6 +883,7 @@ async function sendHomePanel({ config, db, chatId, userId = null, editMessageId 
   const uploadDriver = telegramUploadStorageDriver(config, userId);
   const text = panelText('Telepic 控制台', [
     note || '运行中',
+    '━━━━━━━━━━━━━━━━━━━━',
     `图片总数：${stats.images}`,
     `公开 / 私有：${stats.publicImages} / ${stats.privateImages}`,
     `存储占用：${formatBytes(stats.totalBytes)}`,
@@ -893,14 +894,20 @@ async function sendHomePanel({ config, db, chatId, userId = null, editMessageId 
     `本次 TG 上传：${storageDriverLabel(uploadDriver)}`,
     `对象存储：${isS3Configured(config) ? '已配置' : '未配置'}`,
     `来源分布：${formatSourceBreakdown(stats.sourceBreakdown)}`,
+    '━━━━━━━━━━━━━━━━━━━━',
     '图片管理、相册、密钥、回收站、存储切换都在下方按钮操作。'
   ]);
   const inline_keyboard = [
-    [{ text: '图片列表', callback_data: 'tp:list:0' }, { text: '搜索图片', callback_data: 'tp:searchstart' }, { text: '链接抓图', callback_data: 'tp:fetchstart' }],
-    [{ text: '上传到本地', callback_data: 'tp:uploadstorage:local' }, { text: '上传到存储桶', callback_data: 'tp:uploadstorage:s3' }],
-    [{ text: '相册管理', callback_data: 'tp:albums' }, { text: 'API 密钥', callback_data: 'tp:tokens' }, { text: '回收站', callback_data: 'tp:trash' }],
-    [{ text: '统计概览', callback_data: 'tp:stats' }, { text: '运行日志', callback_data: 'tp:events' }, { text: '系统状态', callback_data: 'tp:system' }],
-    [{ text: '存储控制台', callback_data: 'tp:storage' }],
+    [{ text: '图片列表 / 预览 / 管理', callback_data: 'tp:list:0' }],
+    [{ text: '搜索图片', callback_data: 'tp:searchstart' }],
+    [{ text: '链接抓图', callback_data: 'tp:fetchstart' }],
+    [{ text: '上传位置：本地存储', callback_data: 'tp:uploadstorage:local' }],
+    [{ text: '上传位置：对象存储桶', callback_data: 'tp:uploadstorage:s3' }],
+    [{ text: '相册管理', callback_data: 'tp:albums' }],
+    [{ text: 'API 密钥管理', callback_data: 'tp:tokens' }],
+    [{ text: '回收站管理', callback_data: 'tp:trash' }],
+    [{ text: '统计概览', callback_data: 'tp:stats' }, { text: '运行日志', callback_data: 'tp:events' }],
+    [{ text: '系统状态', callback_data: 'tp:system' }, { text: '存储控制台', callback_data: 'tp:storage' }],
     [{ text: '刷新首页', callback_data: 'tp:home' }]
   ];
   return sendOrEditMessage(config, {
@@ -971,6 +978,7 @@ async function sendStoragePanel({ config, chatId, userId = null, editMessageId =
   const uploadDriver = telegramUploadStorageDriver(config, userId);
   const text = panelText('存储状态', [
     note || '管理上传位置',
+    '━━━━━━━━━━━━━━━━━━━━',
     `默认存储：${storageDriverLabel(config.storageDriver)}`,
     `本次 TG 上传：${storageDriverLabel(uploadDriver)}`,
     `对象存储：${isS3Configured(config) ? '已配置' : '未配置'}`,
@@ -985,7 +993,8 @@ async function sendStoragePanel({ config, chatId, userId = null, editMessageId =
     text,
     reply_markup: {
       inline_keyboard: [
-        [{ text: '上传到本地', callback_data: 'tp:uploadstorage:local' }, { text: '上传到存储桶', callback_data: 'tp:uploadstorage:s3' }],
+        [{ text: '本次上传使用本地存储', callback_data: 'tp:uploadstorage:local' }],
+        [{ text: '本次上传使用对象存储桶', callback_data: 'tp:uploadstorage:s3' }],
         [{ text: '系统状态', callback_data: 'tp:system' }, { text: '统计概览', callback_data: 'tp:stats' }],
         [{ text: '返回首页', callback_data: 'tp:home' }]
       ]

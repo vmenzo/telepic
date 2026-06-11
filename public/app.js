@@ -73,6 +73,69 @@ const THEME_PRESETS = {
   }
 };
 
+const THEME_LIBRARY = {
+  gallery: {
+    id: 'gallery',
+    preset: 'gallery',
+    label: '艺廊白',
+    author: 'Telepic',
+    category: '编辑感',
+    description: '明亮克制的策展风格，适合展示作品集、截图墙和品牌素材。',
+    cover: '',
+    ...THEME_PRESETS.gallery
+  },
+  coast: {
+    id: 'coast',
+    preset: 'coast',
+    label: '海岸玻璃',
+    author: 'Telepic',
+    category: '玻璃感',
+    description: '通透轻盈的半透明面板，适合大众审美下的日常图床后台。',
+    cover: '',
+    ...THEME_PRESETS.coast
+  },
+  studio: {
+    id: 'studio',
+    preset: 'studio',
+    label: '影棚灰',
+    author: 'Telepic',
+    category: '中性色',
+    description: '偏专业控制台气质的中性灰主题，适合长时间管理和运维查看。',
+    cover: '',
+    ...THEME_PRESETS.studio
+  },
+  dusk: {
+    id: 'dusk',
+    preset: 'dusk',
+    label: '暮色柔光',
+    author: 'Telepic',
+    category: '生活感',
+    description: '暖色柔和、层次细腻，适合个人站长和内容型图片管理场景。',
+    cover: '',
+    ...THEME_PRESETS.dusk
+  },
+  focus: {
+    id: 'focus',
+    preset: 'focus',
+    label: '暗场工作台',
+    author: 'Telepic',
+    category: '深色',
+    description: '低亮度高对比的深色工作界面，适合夜间值守和密集操作。',
+    cover: '',
+    ...THEME_PRESETS.focus
+  },
+  botanical: {
+    id: 'botanical',
+    preset: 'botanical',
+    label: '植物玻璃',
+    author: 'Telepic',
+    category: '自然系',
+    description: '清新的植物配色和玻璃质感，更适合轻松一点的运营氛围。',
+    cover: '',
+    ...THEME_PRESETS.botanical
+  }
+};
+
 const DEFAULT_STATS = {
   images: 0,
   publicImages: 0,
@@ -94,10 +157,31 @@ const SESSION_ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'scroll', 'tou
 let sessionIdleTimer = null;
 let lastSessionRefreshAt = 0;
 
+function safeStorageGet(storage, key, fallback = '') {
+  try {
+    const value = storage.getItem(key);
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeStorageSet(storage, key, value) {
+  try {
+    storage.setItem(key, value);
+  } catch {}
+}
+
+function safeStorageRemove(storage, key) {
+  try {
+    storage.removeItem(key);
+  } catch {}
+}
+
 const state = {
-  adminToken: localStorage.getItem('telepic.adminToken') || '',
-  adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
-  sessionIdleExpiresAt: Number(localStorage.getItem('telepic.sessionIdleExpiresAt') || 0),
+  adminToken: safeStorageGet(localStorage, 'telepic.adminToken', ''),
+  adminUsername: safeStorageGet(localStorage, 'telepic.adminUsername', 'admin'),
+  sessionIdleExpiresAt: Number(safeStorageGet(localStorage, 'telepic.sessionIdleExpiresAt', 0) || 0),
   images: [],
   imageTotal: 0,
   imageLimit: 24,
@@ -114,10 +198,11 @@ const state = {
   stats: { ...DEFAULT_STATS },
   activeImageId: null,
   uploadHistory: [],
+  themeLibrary: loadStoredThemeLibrary(),
   theme: loadTheme(),
   mainView: 'library',
   inspectorPane: 'detail',
-  loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
+  loginDismissed: safeStorageGet(sessionStorage, 'telepic.loginDismissed', '') === '1'
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -230,9 +315,13 @@ function bindEvents() {
   on('#themePreset', 'change', onThemePresetChange);
   on('#themeQuickPicks', 'click', handleThemeQuickPick);
   on('#saveTheme', 'click', saveThemeFromInputs);
+  on('#installTheme', 'click', installCurrentTheme);
+  on('#removeTheme', 'click', removeCurrentTheme);
   on('#resetTheme', 'click', resetThemePreset);
   on('#themeBackgroundFile', 'change', handleThemeBackgroundUpload);
   on('#clearThemeBackground', 'click', clearThemeBackground);
+  on('#exportTheme', 'click', exportThemePack);
+  on('#themeImportFile', 'change', importThemePack);
   ['themeBg', 'themePanel', 'themeInk', 'themeAccent', 'themeDanger'].forEach((id) => {
     on(`#${id}`, 'input', previewCustomTheme);
   });
@@ -275,13 +364,13 @@ async function saveLoginToken() {
     state.adminToken = data.token;
     state.adminUsername = data.username || username;
     applySessionRefresh(data);
-    localStorage.setItem('telepic.adminUsername', state.adminUsername);
+    safeStorageSet(localStorage, 'telepic.adminUsername', state.adminUsername);
     const tokenInput = $('#adminToken');
     const passwordInput = $('#loginPassword');
     if (tokenInput) tokenInput.value = state.adminToken;
     if (passwordInput) passwordInput.value = '';
     state.loginDismissed = false;
-    sessionStorage.removeItem('telepic.loginDismissed');
+    safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
     persistAdminToken(state.adminToken);
     $('#loginMessage').textContent = data.expiresAt ? `已登录，会话有效期至 ${formatDate(data.expiresAt)}` : '已登录。';
     toast('管理员登录成功');
@@ -296,9 +385,9 @@ function logoutAdminToken() {
   state.adminToken = '';
   state.sessionIdleExpiresAt = 0;
   state.loginDismissed = false;
-  localStorage.removeItem('telepic.adminToken');
-  localStorage.removeItem('telepic.sessionIdleExpiresAt');
-  sessionStorage.removeItem('telepic.loginDismissed');
+  safeStorageRemove(localStorage, 'telepic.adminToken');
+  safeStorageRemove(localStorage, 'telepic.sessionIdleExpiresAt');
+  safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
   const tokenInput = $('#adminToken');
   const passwordInput = $('#loginPassword');
   if (tokenInput) tokenInput.value = '';
@@ -310,23 +399,23 @@ function logoutAdminToken() {
 
 function dismissLogin() {
   state.loginDismissed = true;
-  sessionStorage.setItem('telepic.loginDismissed', '1');
+  safeStorageSet(sessionStorage, 'telepic.loginDismissed', '1');
   syncAdminState();
 }
 
 function persistAdminToken(token) {
   if (token) {
-    localStorage.setItem('telepic.adminToken', token);
+    safeStorageSet(localStorage, 'telepic.adminToken', token);
     if (!state.sessionIdleExpiresAt) {
       state.sessionIdleExpiresAt = Date.now() + sessionIdleMs();
-      localStorage.setItem('telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
+      safeStorageSet(localStorage, 'telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
     }
     if (state.config && state.config.adminAuthenticated === false) {
       delete state.config.adminAuthenticated;
     }
   } else {
-    localStorage.removeItem('telepic.adminToken');
-    localStorage.removeItem('telepic.sessionIdleExpiresAt');
+    safeStorageRemove(localStorage, 'telepic.adminToken');
+    safeStorageRemove(localStorage, 'telepic.sessionIdleExpiresAt');
     state.sessionIdleExpiresAt = 0;
   }
   scheduleSessionIdleCheck();
@@ -399,12 +488,12 @@ async function request(path, options = {}) {
 function applySessionRefresh(data = {}) {
   if (!data.token || !String(data.token).startsWith('tp_session_')) return;
   state.adminToken = data.token;
-  localStorage.setItem('telepic.adminToken', state.adminToken);
+  safeStorageSet(localStorage, 'telepic.adminToken', state.adminToken);
   if (data.idleExpiresAt) {
     const idleExpiresAt = Date.parse(data.idleExpiresAt);
     if (Number.isFinite(idleExpiresAt)) {
       state.sessionIdleExpiresAt = idleExpiresAt;
-      localStorage.setItem('telepic.sessionIdleExpiresAt', String(idleExpiresAt));
+      safeStorageSet(localStorage, 'telepic.sessionIdleExpiresAt', String(idleExpiresAt));
     }
   }
   const tokenInput = $('#adminToken');
@@ -415,7 +504,7 @@ function applySessionRefresh(data = {}) {
 function markSessionActivity() {
   if (!state.adminToken) return;
   state.sessionIdleExpiresAt = Date.now() + sessionIdleMs();
-  localStorage.setItem('telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
+  safeStorageSet(localStorage, 'telepic.sessionIdleExpiresAt', String(state.sessionIdleExpiresAt));
   scheduleSessionIdleCheck();
   refreshSessionAfterActivity();
 }
@@ -451,9 +540,9 @@ function expireSession() {
   state.adminToken = '';
   state.sessionIdleExpiresAt = 0;
   state.loginDismissed = false;
-  localStorage.removeItem('telepic.adminToken');
-  localStorage.removeItem('telepic.sessionIdleExpiresAt');
-  sessionStorage.removeItem('telepic.loginDismissed');
+  safeStorageRemove(localStorage, 'telepic.adminToken');
+  safeStorageRemove(localStorage, 'telepic.sessionIdleExpiresAt');
+  safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
   const tokenInput = $('#adminToken');
   if (tokenInput) tokenInput.value = '';
   syncAdminState();
@@ -553,6 +642,7 @@ async function refreshConfig() {
       configRow('数据库检测', state.config.checks && state.config.checks.database ? '正常' : '未检测到'),
       configRow('存储检测', state.config.checks && state.config.checks.storage ? '正常' : '未检测到'),
       configRow('主题云端配置', state.config.checks && state.config.checks.themeSettings ? '已保存' : '未保存'),
+      configRow('主题库数量', String(state.config.themeLibraryCount || 0)),
       configRow('管理员状态', state.config.adminAuthenticated ? '已登录，显示完整信息' : '未登录，仅显示公开信息'),
       configRow('公开地址', state.config.publicUrl),
       configRow('数据库驱动', state.config.databaseDriver === 'sqlite' ? 'SQLite' : 'JSON'),
@@ -1949,9 +2039,11 @@ function renderBatchTagSummary() {
 }
 
 function initTheme() {
+  ensureThemeLibrarySeed();
   applyTheme(state.theme);
   syncThemeInputs(state.theme);
   syncThemeQuickPicks(state.theme.preset);
+  renderThemeStore();
   renderThemePreview(state.theme);
 }
 
@@ -1967,24 +2059,49 @@ function onThemePresetChange() {
 }
 
 function handleThemeQuickPick(event) {
-  const button = event.target.closest('[data-theme-preset]');
+  const installButton = event.target.closest('[data-theme-action="install"]');
+  if (installButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    applyThemeFromCard(installButton.dataset.themeId);
+    return;
+  }
+
+  const button = event.target.closest('[data-theme-id]');
   if (!button) return;
-  applyPresetTheme(button.dataset.themePreset);
-  toast(`已切换到${themeName(button.dataset.themePreset)}主题`);
+  applyThemeFromCard(button.dataset.themeId);
 }
 
 function applyPresetTheme(preset) {
   if (!THEME_PRESETS[preset]) return;
-  state.theme = { ...state.theme, preset, ...THEME_PRESETS[preset] };
+  const themePack = themePackForPreset(preset);
+  state.theme = normalizeTheme(themePack || { ...state.theme, preset, ...THEME_PRESETS[preset] });
   applyTheme(state.theme);
   syncThemeInputs(state.theme);
   syncThemeQuickPicks(preset);
   persistTheme();
 }
 
+function applyThemeFromCard(themeId) {
+  const theme = themeLibraryList().find((item) => item.id === themeId);
+  if (!theme) return;
+  state.theme = normalizeTheme(theme);
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
+  persistTheme();
+  toast(`已切换到${state.theme.label}主题`);
+}
+
 async function saveThemeFromInputs() {
   state.theme = {
+    id: state.theme.id || `custom_${Date.now().toString(36)}`,
     preset: 'custom',
+    label: ($('#themeLabel') && $('#themeLabel').value.trim()) || state.theme.label || '自定义主题',
+    author: ($('#themeAuthor') && $('#themeAuthor').value.trim()) || state.theme.author || '本地用户',
+    category: state.theme.category || '自定义',
+    description: ($('#themeDescription') && $('#themeDescription').value.trim()) || state.theme.description || '',
+    cover: state.theme.cover || '',
     bg: $('#themeBg').value,
     panel: $('#themePanel').value,
     ink: $('#themeInk').value,
@@ -2005,13 +2122,28 @@ async function saveThemeFromInputs() {
 
 function resetThemePreset() {
   const preset = $('#themePreset').value === 'custom' ? 'gallery' : $('#themePreset').value;
-  applyPresetTheme(preset);
-  toast('已恢复当前预设');
+  if (preset !== 'custom' && THEME_PRESETS[preset]) {
+    applyPresetTheme(preset);
+    toast('已恢复当前预设');
+    return;
+  }
+  state.theme = normalizeTheme(themePackForPreset('gallery'));
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
+  persistTheme();
+  toast('已恢复默认主题');
 }
 
 function previewCustomTheme() {
   const preview = {
+    id: state.theme.id || `custom_${Date.now().toString(36)}`,
     preset: 'custom',
+    label: ($('#themeLabel') && $('#themeLabel').value.trim()) || state.theme.label || '自定义主题',
+    author: ($('#themeAuthor') && $('#themeAuthor').value.trim()) || state.theme.author || '本地用户',
+    category: state.theme.category || '自定义',
+    description: ($('#themeDescription') && $('#themeDescription').value.trim()) || state.theme.description || '',
+    cover: state.theme.cover || '',
     bg: $('#themeBg').value,
     panel: $('#themePanel').value,
     ink: $('#themeInk').value,
@@ -2045,6 +2177,7 @@ function handleThemeBackgroundUpload(event) {
     state.theme = {
       ...state.theme,
       preset: 'custom',
+      cover: String(reader.result || ''),
       image: String(reader.result || '')
     };
     applyTheme(state.theme);
@@ -2096,9 +2229,139 @@ function applyTheme(theme, updateState = true) {
     : '0 16px 34px rgba(16, 24, 40, 0.10)');
   document.body.classList.toggle('theme-dark', luminance(theme.bg) < 0.35);
   document.body.classList.toggle('theme-photo', Boolean(theme.image));
-  $('#themeBadge').textContent = themeName(theme.preset);
+  $('#themeBadge').textContent = theme.label || themeName(theme.preset);
   renderThemePreview(theme);
+  renderThemeStore();
   syncThemeQuickPicks(theme.preset);
+}
+
+function themePackForPreset(preset) {
+  const installed = state.themeLibrary.find((item) => item.preset === preset || item.id === preset);
+  if (installed) return { ...installed };
+  return THEME_LIBRARY[preset] ? { ...THEME_LIBRARY[preset] } : null;
+}
+
+function enrichTheme(theme) {
+  const base = theme && theme.preset && THEME_LIBRARY[theme.preset] ? THEME_LIBRARY[theme.preset] : null;
+  return {
+    id: String(theme && theme.id || base && base.id || `custom_${Date.now().toString(36)}`),
+    preset: String(theme && theme.preset || base && base.preset || 'custom'),
+    label: String(theme && theme.label || base && base.label || '自定义主题'),
+    author: String(theme && theme.author || base && base.author || '本地用户'),
+    category: String(theme && theme.category || base && base.category || '自定义'),
+    description: String(theme && theme.description || base && base.description || ''),
+    cover: String(theme && theme.cover || base && base.cover || ''),
+    bg: theme.bg,
+    panel: theme.panel,
+    ink: theme.ink,
+    accent: theme.accent,
+    danger: theme.danger,
+    backdrop: theme.backdrop,
+    overlay: theme.overlay,
+    panelAlpha: theme.panelAlpha,
+    blur: theme.blur,
+    image: theme.image || ''
+  };
+}
+
+function themeLibraryList() {
+  const installed = state.themeLibrary.map((theme) => enrichTheme(theme));
+  const current = enrichTheme(state.theme);
+  if (installed.some((theme) => theme.id === current.id)) return installed;
+  return [current, ...installed];
+}
+
+function renderThemeStore() {
+  const showcase = $('#themeShowcase');
+  const store = $('#themeQuickPicks');
+  const meta = $('#themeLibraryMeta');
+  const theme = enrichTheme(state.theme);
+  const themes = themeLibraryList();
+  const installedCount = state.themeLibrary.length;
+  if (showcase) {
+    showcase.innerHTML = `
+      <div class="theme-showcase-cover" style="background:${escapeHtml(theme.backdrop || theme.bg)}; ${theme.image ? `background-image:url('${escapeHtml(theme.image)}'); background-size:cover; background-position:center;` : ''}"></div>
+      <div class="theme-showcase-body">
+        <strong>${escapeHtml(theme.label)}</strong>
+        <span>${escapeHtml(theme.author || '本地用户')} · ${escapeHtml(theme.category || '自定义')}</span>
+        <p>${escapeHtml(theme.description || '可在这里编辑、保存并导入导出完整主题包。')}</p>
+      </div>
+    `;
+  }
+  if (meta) {
+    meta.innerHTML = `
+      <div class="theme-meta-card">
+        <strong>${installedCount}</strong>
+        <span>已安装主题</span>
+      </div>
+      <div class="theme-meta-card">
+        <strong>${theme.id === 'custom' || theme.preset === 'custom' ? '自定义' : '商店主题'}</strong>
+        <span>当前来源</span>
+      </div>
+      <div class="theme-meta-card">
+        <strong>${state.adminToken ? '已连接' : '未登录'}</strong>
+        <span>云端同步状态</span>
+      </div>
+    `;
+  }
+  if (store) {
+    store.innerHTML = themes.map((item) => `
+      <button type="button" class="theme-card ${item.id === theme.id ? 'is-active' : ''}" data-theme-id="${escapeHtml(item.id)}">
+        <span class="theme-card-cover" style="background:${escapeHtml(item.backdrop || item.bg)}; ${item.image ? `background-image:url('${escapeHtml(item.image)}'); background-size:cover; background-position:center;` : ''}"></span>
+        <span class="theme-card-body">
+          <strong>${escapeHtml(item.label)}</strong>
+          <small>${escapeHtml(item.author || 'Telepic')}</small>
+          <span>${escapeHtml(item.description || '')}</span>
+          <span class="theme-card-actions">
+            <small>${escapeHtml(item.category || '自定义')}</small>
+            <button type="button" class="secondary" data-theme-action="install" data-theme-id="${escapeHtml(item.id)}">${item.id === theme.id ? '当前使用' : '启用'}</button>
+          </span>
+        </span>
+      </button>
+    `).join('');
+  }
+}
+
+function exportThemePack() {
+  const theme = enrichTheme(state.theme);
+  const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(theme.label || 'telepic-theme').replace(/[\/:*?"<>|]+/g, '-').slice(0, 60)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast('主题包已导出');
+}
+
+function importThemePack(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result || '{}'));
+      state.theme = normalizeTheme(parsed);
+      upsertThemeInLibrary(state.theme, false);
+      applyTheme(state.theme);
+      syncThemeInputs(state.theme);
+      syncThemeQuickPicks(state.theme.preset);
+      renderThemeStore();
+      persistTheme();
+      $('#themePreset').value = state.theme.preset || 'custom';
+      toast('主题包已导入');
+    } catch (error) {
+      toast('主题包导入失败');
+    }
+    event.target.value = '';
+  };
+  reader.onerror = () => {
+    toast('主题包读取失败');
+    event.target.value = '';
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 function syncThemeInputs(theme) {
@@ -2108,17 +2371,23 @@ function syncThemeInputs(theme) {
   $('#themeInk').value = theme.ink;
   $('#themeAccent').value = theme.accent;
   $('#themeDanger').value = theme.danger;
+  if ($('#themeLabel')) $('#themeLabel').value = theme.label || '';
+  if ($('#themeAuthor')) $('#themeAuthor').value = theme.author || '';
+  if ($('#themeDescription')) $('#themeDescription').value = theme.description || '';
   setThemeStorageState(theme.image ? '已设置背景图' : '预设背景');
 }
 
 function persistTheme() {
-  localStorage.setItem('telepic.theme', JSON.stringify(state.theme));
+  safeStorageSet(localStorage, 'telepic.theme', JSON.stringify(state.theme));
+  safeStorageSet(localStorage, 'telepic.themeLibrary', JSON.stringify(state.themeLibrary));
 }
 
 async function loadServerTheme() {
   const data = await request('/api/settings/theme');
+  state.themeLibrary = mergeThemeLibraries(data.library || []);
   if (!data.theme) {
     setThemeStorageState('暂无云端主题');
+    renderThemeStore();
     return;
   }
   state.theme = normalizeTheme(data.theme);
@@ -2135,18 +2404,64 @@ async function saveThemeToCloud() {
     toast('请先登录管理员账号再保存到云端');
     return;
   }
+  upsertThemeInLibrary(state.theme, false);
   const data = await request('/api/settings/theme', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ theme: state.theme })
+    body: JSON.stringify({ theme: state.theme, library: state.themeLibrary })
   });
   state.theme = normalizeTheme(data.theme || state.theme);
+  state.themeLibrary = mergeThemeLibraries(data.library || []);
   applyTheme(state.theme);
   syncThemeInputs(state.theme);
   syncThemeQuickPicks(state.theme.preset);
   persistTheme();
   setThemeStorageState('已云端保存');
   toast('主题已保存到云端');
+}
+
+async function installCurrentTheme() {
+  state.theme = normalizeTheme({
+    ...state.theme,
+    preset: 'custom',
+    id: normalizeThemeId(state.theme.id || state.theme.label || `theme_${Date.now().toString(36)}`),
+    label: ($('#themeLabel') && $('#themeLabel').value.trim()) || state.theme.label || '自定义主题',
+    author: ($('#themeAuthor') && $('#themeAuthor').value.trim()) || state.theme.author || '本地用户',
+    category: state.theme.category || '自定义',
+    description: ($('#themeDescription') && $('#themeDescription').value.trim()) || state.theme.description || ''
+  });
+  upsertThemeInLibrary(state.theme);
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  renderThemeStore();
+  persistTheme();
+  toast('主题已加入商店');
+}
+
+async function removeCurrentTheme() {
+  if (!state.theme.id) {
+    toast('当前主题无法移除');
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(THEME_LIBRARY, state.theme.id)) {
+    toast('内置主题不能移除');
+    return;
+  }
+  const nextLibrary = state.themeLibrary.filter((item) => item.id !== state.theme.id);
+  if (nextLibrary.length === state.themeLibrary.length) {
+    toast('当前主题未安装到商店');
+    return;
+  }
+  state.themeLibrary = nextLibrary;
+  state.theme = normalizeTheme(themePackForPreset('gallery'));
+  applyTheme(state.theme);
+  syncThemeInputs(state.theme);
+  syncThemeQuickPicks(state.theme.preset);
+  persistTheme();
+  renderThemeStore();
+  if (state.adminToken) await saveThemeToCloud();
+  else setThemeStorageState('本地商店已更新');
+  toast('主题已从商店移除');
 }
 
 function setThemeStorageState(text) {
@@ -2157,9 +2472,17 @@ function setThemeStorageState(text) {
 function normalizeTheme(theme) {
   theme = theme && typeof theme === 'object' ? theme : {};
   const preset = theme.preset && THEME_PRESETS[theme.preset] ? theme.preset : 'custom';
-  if (preset !== 'custom') return { ...theme, preset, ...THEME_PRESETS[preset], image: theme.image || '' };
-  return {
+  if (preset !== 'custom') {
+    return enrichTheme({ ...theme, preset, ...THEME_PRESETS[preset], image: theme.image || '', cover: theme.cover || theme.image || '' });
+  }
+  return enrichTheme({
+    id: String(theme.id || `custom_${Date.now().toString(36)}`),
     preset: 'custom',
+    label: String(theme.label || '自定义主题'),
+    author: String(theme.author || '本地用户'),
+    category: String(theme.category || '自定义'),
+    description: String(theme.description || ''),
+    cover: String(theme.cover || theme.image || ''),
     bg: normalizeColor(theme.bg, THEME_PRESETS.gallery.bg),
     panel: normalizeColor(theme.panel, THEME_PRESETS.gallery.panel),
     ink: normalizeColor(theme.ink, THEME_PRESETS.gallery.ink),
@@ -2170,14 +2493,61 @@ function normalizeTheme(theme) {
     panelAlpha: theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
     blur: theme.blur || THEME_PRESETS.gallery.blur,
     image: theme.image || ''
-  };
+  });
+}
+
+function ensureThemeLibrarySeed() {
+  if (state.themeLibrary.length) {
+    state.themeLibrary = mergeThemeLibraries(state.themeLibrary);
+    return;
+  }
+  state.themeLibrary = mergeThemeLibraries(Object.values(THEME_LIBRARY));
+}
+
+function mergeThemeLibraries(list) {
+  const merged = [];
+  const seen = new Set();
+  [...Object.values(THEME_LIBRARY), ...(Array.isArray(list) ? list : [])].forEach((theme) => {
+    const normalized = normalizeTheme(theme);
+    if (!normalized.id || seen.has(normalized.id)) return;
+    seen.add(normalized.id);
+    merged.push(normalized);
+  });
+  return merged;
+}
+
+function normalizeThemeId(value) {
+  const cleaned = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return cleaned || `theme_${Date.now().toString(36)}`;
+}
+
+function upsertThemeInLibrary(theme, persistCloud = true) {
+  const normalized = normalizeTheme(theme);
+  const index = state.themeLibrary.findIndex((item) => item.id === normalized.id);
+  if (index === -1) state.themeLibrary.unshift(normalized);
+  else state.themeLibrary.splice(index, 1, normalized);
+  state.themeLibrary = mergeThemeLibraries(state.themeLibrary);
+  if (!persistCloud) return;
+  if (state.adminToken) {
+    saveThemeToCloud().catch((error) => {
+      setThemeStorageState('云端商店保存失败');
+      setRuntimeStatus(`主题商店保存失败：${error.message}`);
+    });
+  } else {
+    setThemeStorageState('已加入本地商店，登录后可同步云端');
+  }
 }
 
 function syncThemeQuickPicks(preset) {
-  const buttons = document.querySelectorAll('[data-theme-preset]');
+  const buttons = document.querySelectorAll('[data-theme-id], [data-theme-preset]');
   if (!buttons.length) return;
   buttons.forEach((button) => {
-    button.classList.toggle('is-active', button.dataset.themePreset === preset);
+    button.classList.toggle('is-active', button.dataset.themePreset === preset || button.dataset.themeId === state.theme.id);
   });
 }
 
@@ -2191,13 +2561,13 @@ function renderThemePreview(theme) {
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.ink)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.accent)}"></div>
     <div class="theme-preview-swatch" style="background:${escapeHtml(theme.danger)}"></div>
-    <div class="theme-preview-label">${themeName(theme.preset)} · ${theme.image ? '自定义背景图' : '预设风格背景'}</div>
+    <div class="theme-preview-label">${escapeHtml(theme.label || themeName(theme.preset))} · ${theme.image ? '自定义背景图' : '预设风格背景'}</div>
   `;
 }
 
 function loadTheme() {
   try {
-    const raw = localStorage.getItem('telepic.theme');
+    const raw = safeStorageGet(localStorage, 'telepic.theme', '');
     if (!raw) return { preset: 'gallery', ...THEME_PRESETS.gallery };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return { preset: 'gallery', ...THEME_PRESETS.gallery };
@@ -2207,6 +2577,17 @@ function loadTheme() {
     return normalizeTheme(parsed);
   } catch {
     return { preset: 'gallery', ...THEME_PRESETS.gallery };
+  }
+}
+
+function loadStoredThemeLibrary() {
+  try {
+    const raw = safeStorageGet(localStorage, 'telepic.themeLibrary', '');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
 

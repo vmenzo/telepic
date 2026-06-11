@@ -8,6 +8,72 @@ function htmlPage(config) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Telepic 图床</title>
+  <script>
+    (function () {
+      function safeGet(key) {
+        try { return localStorage.getItem(key) || ''; } catch (error) { return ''; }
+      }
+      function validHex(value) {
+        return /^#[0-9a-fA-F]{6}$/.test(String(value || '')) ? String(value) : '';
+      }
+      function hexToRgb(hex) {
+        var value = validHex(hex).slice(1);
+        if (!value) return null;
+        return { r: parseInt(value.slice(0, 2), 16), g: parseInt(value.slice(2, 4), 16), b: parseInt(value.slice(4, 6), 16) };
+      }
+      function luminance(hex) {
+        var rgb = hexToRgb(hex);
+        if (!rgb) return 1;
+        return (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+      }
+      function mixColor(foreground, background, ratio) {
+        var a = hexToRgb(foreground);
+        var b = hexToRgb(background);
+        if (!a || !b) return foreground || background || '#000000';
+        function blend(left, right) { return Math.round(left * (1 - ratio) + right * ratio).toString(16).padStart(2, '0'); }
+        return '#' + blend(a.r, b.r) + blend(a.g, b.g) + blend(a.b, b.b);
+      }
+      function hexToRgba(hex, alpha) {
+        var rgb = hexToRgb(hex);
+        if (!rgb) return 'rgba(255,255,255,' + alpha + ')';
+        return 'rgba(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ', ' + alpha + ')';
+      }
+      var raw = safeGet('telepic.theme');
+      if (!raw) return;
+      var theme;
+      try { theme = JSON.parse(raw); } catch (error) { return; }
+      if (!theme || typeof theme !== 'object') return;
+      var bg = validHex(theme.bg);
+      var panel = validHex(theme.panel);
+      var ink = validHex(theme.ink);
+      var accent = validHex(theme.accent);
+      var danger = validHex(theme.danger);
+      if (!bg || !panel || !ink || !accent || !danger) return;
+      var root = document.documentElement;
+      root.style.setProperty('--bg', bg);
+      root.style.setProperty('--panel', panel);
+      root.style.setProperty('--ink', ink);
+      root.style.setProperty('--accent', accent);
+      root.style.setProperty('--danger', danger);
+      root.style.setProperty('--line', mixColor(panel, ink, 0.12));
+      root.style.setProperty('--line-strong', mixColor(panel, ink, 0.22));
+      root.style.setProperty('--muted', mixColor(ink, bg, 0.5));
+      root.style.setProperty('--soft', mixColor(accent, panel, 0.88));
+      root.style.setProperty('--danger-soft', mixColor(danger, panel, 0.88));
+      root.style.setProperty('--accent-strong', mixColor(accent, ink, 0.18));
+      root.style.setProperty('--accent-contrast', luminance(accent) > 0.52 ? '#102028' : '#ffffff');
+      root.style.setProperty('--panel-bg', hexToRgba(panel, theme.image ? Math.min(Number(theme.panelAlpha || 0.88), 0.68) : Number(theme.panelAlpha || 0.88)));
+      root.style.setProperty('--panel-blur', (theme.image ? Math.max(Number(theme.blur || 16), 24) : Number(theme.blur || 16)) + 'px');
+      root.style.setProperty('--shadow', luminance(bg) < 0.35 ? '0 18px 44px rgba(0, 0, 0, 0.38)' : '0 16px 34px rgba(16, 24, 40, 0.10)');
+      if (theme.backdrop) root.style.setProperty('--theme-backdrop', theme.backdrop);
+      if (theme.overlay) root.style.setProperty('--theme-overlay', theme.image ? 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))' : theme.overlay);
+      if (theme.image) root.style.setProperty('--theme-image', 'url("' + String(theme.image).replace(/"/g, '&quot;') + '")');
+      document.addEventListener('DOMContentLoaded', function () {
+        document.body.classList.toggle('theme-dark', luminance(bg) < 0.35);
+        document.body.classList.toggle('theme-photo', Boolean(theme.image));
+      }, { once: true });
+    }());
+  </script>
   <link rel="stylesheet" href="/assets/style.css?v=${assetVersion}">
 </head>
 <body class="app-body">
@@ -93,48 +159,43 @@ function htmlPage(config) {
         <div class="panel-head">
           <div>
             <p class="panel-kicker">外观</p>
-            <h2>主题实验室</h2>
+            <h2>主题商店</h2>
           </div>
           <span id="themeBadge" class="badge">艺廊白</span>
         </div>
         <div class="theme-stack">
-          <div id="themeQuickPicks" class="theme-preset-grid">
-            <button type="button" class="theme-preset is-active" data-theme-preset="gallery">
-              <span class="theme-preset-name">艺廊白</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#eef1ee"></i><i style="background:#2f7d68"></i><i style="background:#db9a57"></i>
-              </span>
-            </button>
-            <button type="button" class="theme-preset" data-theme-preset="coast">
-              <span class="theme-preset-name">海岸玻璃</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#e8f1f2"></i><i style="background:#197c8c"></i><i style="background:#f4aa5b"></i>
-              </span>
-            </button>
-            <button type="button" class="theme-preset" data-theme-preset="studio">
-              <span class="theme-preset-name">影棚灰</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#eceff1"></i><i style="background:#596f82"></i><i style="background:#bd4f49"></i>
-              </span>
-            </button>
-            <button type="button" class="theme-preset" data-theme-preset="dusk">
-              <span class="theme-preset-name">暮色柔光</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#f1ece8"></i><i style="background:#8d6b4f"></i><i style="background:#5d7d8e"></i>
-              </span>
-            </button>
-            <button type="button" class="theme-preset" data-theme-preset="focus">
-              <span class="theme-preset-name">暗场工作台</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#11161a"></i><i style="background:#58b899"></i><i style="background:#e8b868"></i>
-              </span>
-            </button>
-            <button type="button" class="theme-preset" data-theme-preset="botanical">
-              <span class="theme-preset-name">植物玻璃</span>
-              <span class="theme-preset-swatches">
-                <i style="background:#edf3ef"></i><i style="background:#237a57"></i><i style="background:#5784a6"></i>
-              </span>
-            </button>
+          <div class="theme-shop-toolbar">
+            <span id="themeStorageState" class="badge">本地预览</span>
+            <div class="actions compact-actions">
+              <button id="saveTheme" class="secondary">保存主题</button>
+              <button id="installTheme" class="secondary">加入商店</button>
+              <button id="removeTheme" class="secondary">移除主题</button>
+              <button id="resetTheme" class="secondary">重置</button>
+            </div>
+          </div>
+          <div id="themeShowcase" class="theme-showcase"></div>
+          <div id="themeLibraryMeta" class="theme-library-meta"></div>
+          <div id="themeQuickPicks" class="theme-store-grid"></div>
+          <div class="theme-shop-actions">
+            <label class="background-picker compact-picker">
+              <span>封面 / 背景</span>
+              <input id="themeBackgroundFile" type="file" accept="image/*">
+            </label>
+            <button id="clearThemeBackground" class="secondary">移除背景</button>
+          </div>
+          <div class="theme-meta-grid">
+            <label class="field-stack">
+              <span>主题名称</span>
+              <input id="themeLabel" placeholder="例如：雾面真皮 / Night Ops">
+            </label>
+            <label class="field-stack">
+              <span>作者</span>
+              <input id="themeAuthor" placeholder="主题作者名称">
+            </label>
+            <label class="field-stack field-stack-wide">
+              <span>主题描述</span>
+              <input id="themeDescription" placeholder="描述主题的材质、氛围和适用场景">
+            </label>
           </div>
           <select id="themePreset">
             <option value="gallery">艺廊白</option>
@@ -152,17 +213,12 @@ function htmlPage(config) {
             <label><span>强调</span><input id="themeAccent" type="color" value="#237a57" aria-label="强调色"></label>
             <label><span>危险</span><input id="themeDanger" type="color" value="#c0463a" aria-label="危险色"></label>
           </div>
-          <div class="actions actions-split">
-            <button id="saveTheme" class="secondary">保存主题</button>
-            <button id="resetTheme" class="secondary">恢复预设</button>
-          </div>
-          <label class="background-picker">
-            <span>背景图片</span>
-            <input id="themeBackgroundFile" type="file" accept="image/*">
-          </label>
-          <div class="actions actions-split">
-            <button id="clearThemeBackground" class="secondary">移除背景图</button>
-            <span id="themeStorageState" class="badge">本地预览</span>
+          <div class="theme-transfer-row">
+            <button id="exportTheme" class="secondary" type="button">导出主题包</button>
+            <label class="background-picker compact-picker">
+              <span>导入主题包</span>
+              <input id="themeImportFile" type="file" accept="application/json,.json">
+            </label>
           </div>
           <div id="themePreview" class="theme-preview"></div>
         </div>

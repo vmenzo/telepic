@@ -62,8 +62,11 @@ async function route(req, res) {
   }
 
   if (req.method === 'GET' && pathname === '/api/settings/theme') {
-    const settings = readSettings();
-    return json(res, 200, { theme: settings.theme || null });
+    const settings = readSettings(config);
+    return json(res, 200, {
+      theme: settings.theme || null,
+      library: Array.isArray(settings.themeLibrary) ? settings.themeLibrary : []
+    });
   }
 
   if (req.method === 'GET' && pathname === '/api/system/status') {
@@ -75,7 +78,7 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/albums') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const settings = readSettings();
+    const settings = readSettings(config);
     return json(res, 200, { albums: listAlbums(settings).map((album) => publicAlbum(album)) });
   }
 
@@ -83,12 +86,12 @@ async function route(req, res) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 64 * 1024);
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = createAlbumRecord(body, settings);
     settings.albums = ensureAlbums(settings);
     settings.albums.unshift(album);
     settings.updatedAt = new Date().toISOString();
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.created', { actor: auth.actor, albumId: album.id, name: album.name });
     return json(res, 201, { album: publicAlbum(album) });
   }
@@ -97,12 +100,18 @@ async function route(req, res) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 3 * 1024 * 1024);
-    const settings = readSettings();
+    const settings = readSettings(config);
     settings.theme = sanitizeTheme(body.theme || {});
+    settings.themeLibrary = sanitizeThemeLibrary(body.library || []);
     settings.updatedAt = new Date().toISOString();
-    writeSettings(settings);
-    db.addEvent('settings.theme.updated', { actor: auth.actor });
-    return json(res, 200, { ok: true, theme: settings.theme, updatedAt: settings.updatedAt });
+    writeSettings(config, settings);
+    db.addEvent('settings.theme.updated', { actor: auth.actor, librarySize: settings.themeLibrary.length });
+    return json(res, 200, {
+      ok: true,
+      theme: settings.theme,
+      library: settings.themeLibrary,
+      updatedAt: settings.updatedAt
+    });
   }
 
   if (req.method === 'POST' && pathname === '/api/login') {
@@ -148,7 +157,7 @@ async function route(req, res) {
     const albumId = url.searchParams.get('albumId') || '';
     const q = url.searchParams.get('q') || '';
     const sort = url.searchParams.get('sort') || 'newest';
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = albumId ? findAlbum(settings, albumId) : null;
     const imageIds = album ? new Set((album.imageIds || []).map(String)) : null;
     let all = db.listImages({ limit: Number.MAX_SAFE_INTEGER, offset: 0, includePrivate: admin, visibility, source, tag, q, sort })
@@ -190,7 +199,7 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/trash') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const settings = readSettings();
+    const settings = readSettings(config);
     const limit = clamp(Number(url.searchParams.get('limit') || 30), 1, 200);
     const offset = clamp(Number(url.searchParams.get('offset') || 0), 0, Number.MAX_SAFE_INTEGER);
     const recycleBin = ensureRecycleBin(settings);
@@ -295,6 +304,7 @@ async function route(req, res) {
 
   if (req.method === 'GET' && pathname === '/api/config') {
     const admin = requireAdmin(req, config);
+    const settings = readSettings(config);
     return json(res, 200, {
       appName: packageJson.name,
       appVersion: packageJson.version,
@@ -313,8 +323,9 @@ async function route(req, res) {
         api: true,
         database: true,
         storage: true,
-        themeSettings: fs.existsSync(settingsPath())
+        themeSettings: fs.existsSync(settingsPath(config))
       },
+      themeLibraryCount: Array.isArray(settings.themeLibrary) ? settings.themeLibrary.length : 0,
       databaseDriver: config.databaseDriver,
       databaseFile: admin ? config.databaseFile : '',
       dataDir: admin ? config.dataDir : '',
@@ -405,10 +416,10 @@ async function route(req, res) {
     updateRuntimeConfig(next);
     storage = createStorage(config);
     storage.ensure();
-    const settings = readSettings();
+    const settings = readSettings(config);
     settings.previousStorageConfig = previousStorage;
     settings.updatedAt = new Date().toISOString();
-    writeSettings(settings);
+    writeSettings(config, settings);
     updateEnvValues(config.envFile, {
       STORAGE_DRIVER: config.storageDriver,
       S3_BUCKET: config.s3Bucket,
@@ -435,7 +446,7 @@ async function route(req, res) {
   if (req.method === 'POST' && pathname === '/api/integrations/storage/migrate') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const settings = readSettings();
+    const settings = readSettings(config);
     const previous = settings.previousStorageConfig;
     if (!previous || !previous.storageDriver) {
       return json(res, 400, { error: 'No previous storage configuration is available for migration' });
@@ -459,7 +470,7 @@ async function route(req, res) {
     if (!failed.length) {
       settings.previousStorageConfig = null;
       settings.updatedAt = new Date().toISOString();
-      writeSettings(settings);
+      writeSettings(config, settings);
     }
     db.addEvent('integration.storage.migrated', { actor: auth.actor, migrated: migrated.length, failed: failed.length });
     return json(res, 200, { ok: failed.length === 0, migrated, failed });
@@ -495,7 +506,7 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const albumId = pathname.split('/')[3];
     const body = await parseJsonBody(req, 64 * 1024);
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = findAlbum(settings, albumId);
     if (!album) return json(res, 404, { error: 'Album not found' });
     if (typeof body.name === 'string' && body.name.trim()) album.name = body.name.trim().slice(0, 80);
@@ -504,7 +515,7 @@ async function route(req, res) {
     if (body.sortMode !== undefined) album.sortMode = normalizeAlbumSortMode(body.sortMode);
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.updated', { actor: auth.actor, albumId: album.id });
     return json(res, 200, { album: publicAlbum(album) });
   }
@@ -513,12 +524,12 @@ async function route(req, res) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const albumId = pathname.split('/')[3];
-    const settings = readSettings();
+    const settings = readSettings(config);
     const before = ensureAlbums(settings).length;
     settings.albums = ensureAlbums(settings).filter((album) => String(album.id) !== String(albumId));
     if (settings.albums.length === before) return json(res, 404, { error: 'Album not found' });
     settings.updatedAt = new Date().toISOString();
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.deleted', { actor: auth.actor, albumId });
     return json(res, 200, { ok: true });
   }
@@ -528,7 +539,7 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const albumId = pathname.split('/')[3];
     const body = await parseJsonBody(req, 256 * 1024);
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = findAlbum(settings, albumId);
     if (!album) return json(res, 404, { error: 'Album not found' });
     const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 200) : [];
@@ -536,7 +547,7 @@ async function route(req, res) {
     if (!album.coverImageId && ids.length) album.coverImageId = ids[0];
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.images_added', { actor: auth.actor, albumId, count: ids.length });
     return json(res, 200, { album: publicAlbum(album) });
   }
@@ -545,14 +556,14 @@ async function route(req, res) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const [, , , albumId, , imageId] = pathname.split('/');
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = findAlbum(settings, albumId);
     if (!album) return json(res, 404, { error: 'Album not found' });
     album.imageIds = (album.imageIds || []).filter((id) => String(id) !== String(imageId));
     if (String(album.coverImageId || '') === String(imageId)) album.coverImageId = album.imageIds[0] || '';
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.image_removed', { actor: auth.actor, albumId, imageId });
     return json(res, 200, { album: publicAlbum(album) });
   }
@@ -562,13 +573,13 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const albumId = pathname.split('/')[3];
     const body = await parseJsonBody(req, 32 * 1024);
-    const settings = readSettings();
+    const settings = readSettings(config);
     const album = findAlbum(settings, albumId);
     if (!album) return json(res, 404, { error: 'Album not found' });
     reorderAlbumImages(album, String(body.imageId || ''), String(body.direction || ''));
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('album.reordered', { actor: auth.actor, albumId, imageId: body.imageId, direction: body.direction });
     return json(res, 200, { album: publicAlbum(album) });
   }
@@ -592,13 +603,13 @@ async function route(req, res) {
   if (req.method === 'POST' && pathname === '/api/trash/empty') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const settings = readSettings();
+    const settings = readSettings(config);
     const items = ensureRecycleBin(settings);
     for (const item of items) await storage.delete(item);
     removeImagesFromAlbums(settings, items.map((item) => item.id));
     settings.recycleBin = [];
     settings.updatedAt = new Date().toISOString();
-    writeSettings(settings);
+    writeSettings(config, settings);
     db.addEvent('trash.emptied', { actor: auth.actor, count: items.length });
     return json(res, 200, { ok: true, removed: items.length });
   }
@@ -940,7 +951,7 @@ async function telegramStatusPayload() {
 }
 
 async function storageStatusPayload() {
-  const settings = readSettings();
+  const settings = readSettings(config);
   const status = {
     ok: true,
     driver: config.storageDriver,
@@ -1151,7 +1162,7 @@ function storageConfigPayload() {
 
 function systemStatusPayload() {
   const memory = process.memoryUsage();
-  const settings = readSettings();
+  const settings = readSettings(config);
   return {
     ok: true,
     uptimeSeconds: Math.floor((Date.now() - bootAt) / 1000),
@@ -1165,6 +1176,7 @@ function systemStatusPayload() {
     imageCount: db.stats().images,
     recycleCount: ensureRecycleBin(settings).length,
     albumCount: ensureAlbums(settings).length,
+    themeLibraryCount: Array.isArray(settings.themeLibrary) ? settings.themeLibrary.length : 0,
     memory: {
       rss: memory.rss,
       heapUsed: memory.heapUsed,
@@ -1173,7 +1185,7 @@ function systemStatusPayload() {
     checks: {
       dataDirWritable: fs.existsSync(config.dataDir),
       uploadDirWritable: fs.existsSync(config.uploadDir),
-      themeConfigured: fs.existsSync(settingsPath()),
+      themeConfigured: fs.existsSync(settingsPath(config)),
       telegramConfigured: Boolean(config.telegramBotToken),
       storageConfigured: config.storageDriver === 'local' ? true : Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey)
     }
@@ -1256,7 +1268,7 @@ function refreshSessionHeader(req, res) {
 }
 
 function sanitizeTheme(theme) {
-  const stringFields = ['preset', 'bg', 'panel', 'ink', 'accent', 'danger', 'backdrop', 'overlay', 'image'];
+  const stringFields = ['id', 'preset', 'label', 'author', 'category', 'description', 'cover', 'bg', 'panel', 'ink', 'accent', 'danger', 'backdrop', 'overlay', 'image'];
   const clean = {};
   for (const field of stringFields) {
     if (typeof theme[field] === 'string') clean[field] = theme[field].slice(0, field === 'image' ? 2_800_000 : 4000);
@@ -1264,6 +1276,20 @@ function sanitizeTheme(theme) {
   clean.panelAlpha = clamp(Number(theme.panelAlpha || 0.88), 0.55, 1);
   clean.blur = clamp(Number(theme.blur || 18), 0, 40);
   return clean;
+}
+
+function sanitizeThemeLibrary(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const item of input.slice(0, 48)) {
+    const clean = sanitizeTheme(item || {});
+    const id = String(clean.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(clean);
+  }
+  return result;
 }
 
 function escapeEnvValue(value) {

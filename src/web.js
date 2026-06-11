@@ -329,10 +329,22 @@ function htmlPage(config) {
                 <span>相册描述</span>
                 <input id="albumEditDescription" placeholder="相册描述">
               </label>
+              <label class="field-stack">
+                <span>排序方式</span>
+                <select id="albumSortMode">
+                  <option value="manual">手动排序</option>
+                  <option value="newest">最新优先</option>
+                  <option value="oldest">最早优先</option>
+                  <option value="name">按名称</option>
+                </select>
+              </label>
             </div>
             <div class="actions actions-split">
               <button id="saveAlbumMeta" class="secondary" type="button">保存相册信息</button>
               <button id="setAlbumCoverFromCurrent" class="secondary" type="button">当前图片设为封面</button>
+              <button id="removeCurrentFromAlbum" class="secondary" type="button">移出当前图片</button>
+              <button id="moveCurrentAlbumUp" class="secondary" type="button">当前图片上移</button>
+              <button id="moveCurrentAlbumDown" class="secondary" type="button">当前图片下移</button>
               <button id="deleteAlbum" class="danger" type="button">删除相册</button>
             </div>
             <div id="albumDetailResult" class="result-box"></div>
@@ -350,6 +362,28 @@ function htmlPage(config) {
             </div>
           </div>
           <div id="telegramStatusPanel" class="status-panel-grid"></div>
+          <div class="integration-panel">
+            <div class="panel-head compact">
+              <div>
+                <p class="panel-kicker">Telegram Test</p>
+                <h2>测试消息</h2>
+              </div>
+            </div>
+            <div class="integration-grid">
+              <label class="field-stack">
+                <span>测试 Chat ID</span>
+                <input id="telegramTestChatId" placeholder="留空则默认第一个白名单用户">
+              </label>
+              <label class="field-stack">
+                <span>测试内容</span>
+                <input id="telegramTestMessage" placeholder="Telepic 测试消息">
+              </label>
+            </div>
+            <div class="actions">
+              <button id="sendTelegramTest" type="button" class="secondary">发送测试消息</button>
+            </div>
+            <div id="telegramTestResult" class="result-box"></div>
+          </div>
           <div id="telegramConfigMount"></div>
         </section>
       </section>
@@ -364,6 +398,18 @@ function htmlPage(config) {
             </div>
           </div>
           <div id="storageStatusPanel" class="status-panel-grid"></div>
+          <div class="integration-panel">
+            <div class="panel-head compact">
+              <div>
+                <p class="panel-kicker">Storage Migration</p>
+                <h2>迁移已有文件</h2>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="migrateStorageData" type="button" class="secondary">迁移到当前存储配置</button>
+            </div>
+            <div id="storageMigrateResult" class="result-box"></div>
+          </div>
           <div id="storageConfigMount"></div>
         </section>
       </section>
@@ -620,6 +666,15 @@ function htmlPage(config) {
                 </div>
               </div>
               <pre id="apiExample" class="mono-box"></pre>
+            </div>
+            <div class="api-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">运行状态</p>
+                  <h2>系统运维状态</h2>
+                </div>
+              </div>
+              <div id="systemStatusPanel" class="config-list"></div>
             </div>
           </section>
 

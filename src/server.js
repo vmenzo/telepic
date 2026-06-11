@@ -15,6 +15,7 @@ const packageJson = require('../package.json');
 
 const db = createDb(config);
 let storage = createStorage(config);
+const bootAt = Date.now();
 
 db.load();
 storage.ensure();
@@ -62,6 +63,12 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/settings/theme') {
     const settings = readSettings();
     return json(res, 200, { theme: settings.theme || null });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/system/status') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    return json(res, 200, systemStatusPayload());
   }
 
   if (req.method === 'GET' && pathname === '/api/albums') {
@@ -143,9 +150,10 @@ async function route(req, res) {
     const settings = readSettings();
     const album = albumId ? findAlbum(settings, albumId) : null;
     const imageIds = album ? new Set((album.imageIds || []).map(String)) : null;
-    const all = db.listImages({ limit: Number.MAX_SAFE_INTEGER, offset: 0, includePrivate: admin, visibility, source, tag, q, sort })
+    let all = db.listImages({ limit: Number.MAX_SAFE_INTEGER, offset: 0, includePrivate: admin, visibility, source, tag, q, sort })
       .filter((image) => !image.deletedAt)
       .filter((image) => !imageIds || imageIds.has(String(image.id)));
+    if (album) all = applyAlbumOrdering(all, album);
     const page = all.slice(offset, offset + limit);
     return json(res, 200, {
       images: page.map(publicImage),
@@ -367,10 +375,27 @@ async function route(req, res) {
     return json(res, 200, { ok: true, webhookUrl, telegram: result });
   }
 
+  if (req.method === 'POST' && pathname === '/api/integrations/telegram/test') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    if (!config.telegramBotToken) return json(res, 400, { error: 'Telegram bot token is not configured' });
+    const body = await parseJsonBody(req, 32 * 1024);
+    const chatId = String(body.chatId || config.telegramAllowedUserIds[0] || '').trim();
+    if (!chatId) return json(res, 400, { error: 'A Telegram chat ID is required' });
+    const textMessage = String(body.message || 'Telepic 测试消息').trim().slice(0, 2000);
+    const result = await telegramApi(config, 'sendMessage', { chat_id: chatId, text: textMessage });
+    if (!result || !result.ok) {
+      return json(res, 502, { error: result && result.description ? result.description : 'Telegram test message failed' });
+    }
+    db.addEvent('integration.telegram.test_sent', { actor: auth.actor, chatId });
+    return json(res, 200, { ok: true, result });
+  }
+
   if (req.method === 'PUT' && pathname === '/api/integrations/storage') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 96 * 1024);
+    const previousStorage = currentStorageSnapshot();
     const next = storageConfigFromBody(body);
     if (next.storageDriver === 's3') {
       const missing = ['s3Bucket', 's3AccessKeyId', 's3SecretAccessKey'].filter((key) => !next[key]);
@@ -379,6 +404,10 @@ async function route(req, res) {
     updateRuntimeConfig(next);
     storage = createStorage(config);
     storage.ensure();
+    const settings = readSettings();
+    settings.previousStorageConfig = previousStorage;
+    settings.updatedAt = new Date().toISOString();
+    writeSettings(settings);
     updateEnvValues(config.envFile, {
       STORAGE_DRIVER: config.storageDriver,
       S3_BUCKET: config.s3Bucket,
@@ -400,6 +429,39 @@ async function route(req, res) {
     const candidate = createStorage(config);
     candidate.ensure();
     return json(res, 200, { ok: true, storageDriver: config.storageDriver, s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey) });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/integrations/storage/migrate') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const settings = readSettings();
+    const previous = settings.previousStorageConfig;
+    if (!previous || !previous.storageDriver) {
+      return json(res, 400, { error: 'No previous storage configuration is available for migration' });
+    }
+    const sourceStorage = createStorageFromSnapshot(previous);
+    const targetStorage = createStorage(config);
+    sourceStorage.ensure();
+    targetStorage.ensure();
+    const images = db.listImages({ limit: Number.MAX_SAFE_INTEGER, offset: 0, includePrivate: true });
+    const migrated = [];
+    const failed = [];
+    for (const image of images) {
+      try {
+        const file = await sourceStorage.read(image);
+        await targetStorage.writeObject(image, file.buffer, file.mime || image.mime);
+        migrated.push(image.id);
+      } catch (error) {
+        failed.push({ id: image.id, error: error.message });
+      }
+    }
+    if (!failed.length) {
+      settings.previousStorageConfig = null;
+      settings.updatedAt = new Date().toISOString();
+      writeSettings(settings);
+    }
+    db.addEvent('integration.storage.migrated', { actor: auth.actor, migrated: migrated.length, failed: failed.length });
+    return json(res, 200, { ok: failed.length === 0, migrated, failed });
   }
 
   if (req.method === 'GET' && pathname === '/api/integrations/storage/status') {
@@ -438,6 +500,7 @@ async function route(req, res) {
     if (typeof body.name === 'string' && body.name.trim()) album.name = body.name.trim().slice(0, 80);
     if (typeof body.description === 'string') album.description = body.description.trim().slice(0, 300);
     if (typeof body.coverImageId === 'string') album.coverImageId = body.coverImageId.trim();
+    if (body.sortMode !== undefined) album.sortMode = normalizeAlbumSortMode(body.sortMode);
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
     writeSettings(settings);
@@ -474,6 +537,38 @@ async function route(req, res) {
     settings.updatedAt = album.updatedAt;
     writeSettings(settings);
     db.addEvent('album.images_added', { actor: auth.actor, albumId, count: ids.length });
+    return json(res, 200, { album: publicAlbum(album) });
+  }
+
+  if (req.method === 'DELETE' && /^\/api\/albums\/[^/]+\/images\/[^/]+$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const [, , , albumId, , imageId] = pathname.split('/');
+    const settings = readSettings();
+    const album = findAlbum(settings, albumId);
+    if (!album) return json(res, 404, { error: 'Album not found' });
+    album.imageIds = (album.imageIds || []).filter((id) => String(id) !== String(imageId));
+    if (String(album.coverImageId || '') === String(imageId)) album.coverImageId = album.imageIds[0] || '';
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(settings);
+    db.addEvent('album.image_removed', { actor: auth.actor, albumId, imageId });
+    return json(res, 200, { album: publicAlbum(album) });
+  }
+
+  if (req.method === 'POST' && /^\/api\/albums\/[^/]+\/reorder$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const albumId = pathname.split('/')[3];
+    const body = await parseJsonBody(req, 32 * 1024);
+    const settings = readSettings();
+    const album = findAlbum(settings, albumId);
+    if (!album) return json(res, 404, { error: 'Album not found' });
+    reorderAlbumImages(album, String(body.imageId || ''), String(body.direction || ''));
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(settings);
+    db.addEvent('album.reordered', { actor: auth.actor, albumId, imageId: body.imageId, direction: body.direction });
     return json(res, 200, { album: publicAlbum(album) });
   }
 
@@ -720,7 +815,8 @@ function listAlbums(settings) {
       imageIds: activeImageIds,
       imageCount: activeImageIds.length,
       coverImageId: album.coverImageId || (activeImageIds[0] || ''),
-      coverImage
+      coverImage,
+      sortMode: album.sortMode || 'manual'
     };
   });
 }
@@ -733,6 +829,7 @@ function publicAlbum(album) {
     coverImageId: album.coverImageId || '',
     imageIds: album.imageIds || [],
     imageCount: typeof album.imageCount === 'number' ? album.imageCount : (album.imageIds || []).length,
+    sortMode: album.sortMode || 'manual',
     coverImage: album.coverImage ? publicImage(album.coverImage) : null,
     createdAt: album.createdAt,
     updatedAt: album.updatedAt
@@ -762,6 +859,7 @@ function createAlbumRecord(body, settings) {
     description: String(body && body.description || '').trim().slice(0, 300),
     coverImageId: String(body && body.coverImageId || '').trim(),
     imageIds: Array.isArray(body && body.imageIds) ? body.imageIds.map(String).slice(0, 2000) : [],
+    sortMode: normalizeAlbumSortMode(body && body.sortMode),
     createdAt: nowIso,
     updatedAt: nowIso
   };
@@ -835,6 +933,37 @@ function removeImagesFromAlbums(settings, ids) {
   }
 }
 
+function normalizeAlbumSortMode(value) {
+  return ['manual', 'newest', 'oldest', 'name'].includes(String(value || '')) ? String(value) : 'manual';
+}
+
+function applyAlbumOrdering(images, album) {
+  const sortMode = normalizeAlbumSortMode(album.sortMode);
+  if (sortMode === 'manual') {
+    const order = new Map((album.imageIds || []).map((id, index) => [String(id), index]));
+    return [...images].sort((a, b) => (order.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) - (order.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER));
+  }
+  if (sortMode === 'name') {
+    return [...images].sort((a, b) => String(a.originalName || '').localeCompare(String(b.originalName || ''), 'zh-CN'));
+  }
+  if (sortMode === 'oldest') {
+    return [...images].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  }
+  return [...images].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function reorderAlbumImages(album, imageId, direction) {
+  album.imageIds ||= [];
+  const index = album.imageIds.findIndex((id) => String(id) === String(imageId));
+  if (index === -1) return;
+  const offset = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
+  const target = index + offset;
+  if (target < 0 || target >= album.imageIds.length) return;
+  const [image] = album.imageIds.splice(index, 1);
+  album.imageIds.splice(target, 0, image);
+  album.sortMode = 'manual';
+}
+
 async function telegramStatusPayload() {
   const payload = {
     ok: true,
@@ -858,6 +987,7 @@ async function telegramStatusPayload() {
 }
 
 async function storageStatusPayload() {
+  const settings = readSettings();
   const status = {
     ok: true,
     driver: config.storageDriver,
@@ -868,7 +998,8 @@ async function storageStatusPayload() {
     publicBaseUrl: config.s3PublicBaseUrl || '',
     forcePathStyle: Boolean(config.s3ForcePathStyle),
     imageCount: db.stats().images,
-    recycleCount: ensureRecycleBin(readSettings()).length,
+    recycleCount: ensureRecycleBin(settings).length,
+    previousConfigAvailable: Boolean(settings.previousStorageConfig && settings.previousStorageConfig.storageDriver),
     testWrite: false,
     testRead: false,
     message: ''
@@ -1015,6 +1146,30 @@ function updateRuntimeConfig(values) {
   }
 }
 
+function currentStorageSnapshot() {
+  return {
+    rootDir: config.rootDir,
+    uploadDir: config.uploadDir,
+    storageDriver: config.storageDriver,
+    s3Bucket: config.s3Bucket,
+    s3Region: config.s3Region,
+    s3Endpoint: config.s3Endpoint,
+    s3AccessKeyId: config.s3AccessKeyId,
+    s3SecretAccessKey: config.s3SecretAccessKey,
+    s3PublicBaseUrl: config.s3PublicBaseUrl,
+    s3Prefix: config.s3Prefix,
+    s3ForcePathStyle: config.s3ForcePathStyle
+  };
+}
+
+function createStorageFromSnapshot(snapshot) {
+  const merged = {
+    ...config,
+    ...snapshot
+  };
+  return createStorage(merged);
+}
+
 function telegramConfigPayload() {
   return {
     ok: true,
@@ -1038,6 +1193,37 @@ function storageConfigPayload() {
     s3Prefix: config.s3Prefix,
     s3ForcePathStyle: config.s3ForcePathStyle,
     s3PublicBaseUrl: config.s3PublicBaseUrl
+  };
+}
+
+function systemStatusPayload() {
+  const memory = process.memoryUsage();
+  const settings = readSettings();
+  return {
+    ok: true,
+    uptimeSeconds: Math.floor((Date.now() - bootAt) / 1000),
+    pid: process.pid,
+    nodeVersion: process.version,
+    platform: `${process.platform}/${process.arch}`,
+    dataDir: config.dataDir,
+    uploadDir: config.uploadDir,
+    databaseDriver: config.databaseDriver,
+    storageDriver: config.storageDriver,
+    imageCount: db.stats().images,
+    recycleCount: ensureRecycleBin(settings).length,
+    albumCount: ensureAlbums(settings).length,
+    memory: {
+      rss: memory.rss,
+      heapUsed: memory.heapUsed,
+      heapTotal: memory.heapTotal
+    },
+    checks: {
+      dataDirWritable: fs.existsSync(config.dataDir),
+      uploadDirWritable: fs.existsSync(config.uploadDir),
+      themeConfigured: fs.existsSync(settingsPath()),
+      telegramConfigured: Boolean(config.telegramBotToken),
+      storageConfigured: config.storageDriver === 'local' ? true : Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey)
+    }
   };
 }
 

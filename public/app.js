@@ -109,6 +109,7 @@ const state = {
   trashTotal: 0,
   telegramStatus: null,
   storageStatus: null,
+  systemStatus: null,
   config: {},
   stats: { ...DEFAULT_STATS },
   activeImageId: null,
@@ -214,12 +215,17 @@ function bindEvents() {
   on('#albumGrid', 'click', handleAlbumGridClick);
   on('#saveAlbumMeta', 'click', saveAlbumMeta);
   on('#setAlbumCoverFromCurrent', 'click', setAlbumCoverFromCurrent);
+  on('#removeCurrentFromAlbum', 'click', removeCurrentFromAlbum);
+  on('#moveCurrentAlbumUp', 'click', () => reorderCurrentAlbumImage('up'));
+  on('#moveCurrentAlbumDown', 'click', () => reorderCurrentAlbumImage('down'));
   on('#deleteAlbum', 'click', deleteAlbum);
   on('#refreshTrash', 'click', refreshTrash);
   on('#emptyTrash', 'click', emptyTrash);
   on('#trashList', 'click', handleTrashListClick);
   on('#prevPage', 'click', () => changePage(-1));
   on('#nextPage', 'click', () => changePage(1));
+  on('#sendTelegramTest', 'click', sendTelegramTest);
+  on('#migrateStorageData', 'click', migrateStorageData);
   on('#inspectorTabs', 'click', handleInspectorTabs);
   on('#themePreset', 'change', onThemePresetChange);
   on('#themeQuickPicks', 'click', handleThemeQuickPick);
@@ -503,6 +509,7 @@ async function refresh() {
     refreshAlbums(),
     refreshTelegramStatus(),
     refreshStorageStatus(),
+    refreshSystemStatus(),
     refreshTrash(),
     refreshTokens(),
     refreshEvents()
@@ -740,6 +747,21 @@ async function refreshStorageStatus() {
   } catch (error) {
     state.storageStatus = { ok: false, message: error.message };
     renderStorageStatus();
+  }
+}
+
+async function refreshSystemStatus() {
+  if (!state.adminToken) {
+    state.systemStatus = null;
+    renderSystemStatus();
+    return;
+  }
+  try {
+    state.systemStatus = await request('/api/system/status');
+    renderSystemStatus();
+  } catch (error) {
+    state.systemStatus = { ok: false, error: error.message };
+    renderSystemStatus();
   }
 }
 
@@ -1327,6 +1349,7 @@ function renderAlbumDetail() {
   $('#albumDetailBadge').textContent = album ? album.name : '未选择';
   if ($('#albumEditName')) $('#albumEditName').value = album ? (album.name || '') : '';
   if ($('#albumEditDescription')) $('#albumEditDescription').value = album ? (album.description || '') : '';
+  if ($('#albumSortMode')) $('#albumSortMode').value = album ? (album.sortMode || 'manual') : 'manual';
   const result = $('#albumDetailResult');
   if (result && !album) result.textContent = '选择一个相册后可编辑名称、描述和封面。';
 }
@@ -1339,6 +1362,10 @@ function renderTelegramStatus() {
     panel.innerHTML = '<p class="empty-state">登录管理员后可查看 Bot 状态。</p>';
     return;
   }
+  const chatInput = $('#telegramTestChatId');
+  if (chatInput && !chatInput.value && status.allowedUserIds && status.allowedUserIds.length) {
+    chatInput.value = status.allowedUserIds[0];
+  }
   panel.innerHTML = `
     <article class="dashboard-panel">
       <div class="pane-head"><div><p class="panel-kicker">Bot 状态</p><h2>${status.enabled ? '已配置' : '未配置'}</h2></div></div>
@@ -1347,7 +1374,9 @@ function renderTelegramStatus() {
         ${configRow('允许用户', (status.allowedUserIds || []).join(', ') || '未配置')}
         ${configRow('机器人', status.bot && status.bot.result ? `${status.bot.result.username || ''} (${status.bot.result.id})` : '未获取')}
         ${configRow('最后错误', status.webhook && status.webhook.result ? (status.webhook.result.last_error_message || '无') : (status.error || '无'))}
+        ${configRow('待处理更新', status.webhook && status.webhook.result ? String(status.webhook.result.pending_update_count || 0) : '0')}
       </div>
+      <div class="events">${(status.recentEvents || []).map((item) => `<article class="event-item"><div class="event-head"><strong>${escapeHtml(item.type)}</strong><small>${formatDate(item.createdAt)}</small></div><div class="event-body">${escapeHtml(renderEventDetails(item.details))}</div></article>`).join('') || '<p class="empty-state">暂无 Telegram 相关事件。</p>'}</div>
     </article>
   `;
 }
@@ -1370,10 +1399,42 @@ function renderStorageStatus() {
         ${configRow('前缀', status.prefix || '未设置')}
         ${configRow('图片数', String(status.imageCount || 0))}
         ${configRow('回收站', String(status.recycleCount || 0))}
+        ${configRow('可迁移旧配置', status.previousConfigAvailable ? '有' : '无')}
         ${configRow('说明', status.message || '无')}
       </div>
     </article>
   `;
+}
+
+function renderSystemStatus() {
+  const panel = $('#systemStatusPanel');
+  if (!panel) return;
+  const status = state.systemStatus;
+  if (!status) {
+    panel.innerHTML = '<p class="empty-state">登录管理员后可查看系统运维状态。</p>';
+    return;
+  }
+  if (status.ok === false) {
+    panel.innerHTML = `<p class="empty-state">${escapeHtml(status.error || '读取失败')}</p>`;
+    return;
+  }
+  panel.innerHTML = [
+    configRow('进程 PID', String(status.pid)),
+    configRow('运行时长', `${Math.floor((status.uptimeSeconds || 0) / 60)} 分钟`),
+    configRow('Node / 平台', `${status.nodeVersion} · ${status.platform}`),
+    configRow('数据目录', status.dataDir || ''),
+    configRow('上传目录', status.uploadDir || ''),
+    configRow('数据库', status.databaseDriver || ''),
+    configRow('存储驱动', status.storageDriver || ''),
+    configRow('相册数量', String(status.albumCount || 0)),
+    configRow('回收站数量', String(status.recycleCount || 0)),
+    configRow('RSS 内存', formatBytes(status.memory && status.memory.rss || 0)),
+    configRow('Heap 已用', formatBytes(status.memory && status.memory.heapUsed || 0)),
+    configRow('数据目录可用', status.checks && status.checks.dataDirWritable ? '正常' : '异常'),
+    configRow('上传目录可用', status.checks && status.checks.uploadDirWritable ? '正常' : '异常'),
+    configRow('Telegram 配置', status.checks && status.checks.telegramConfigured ? '已配置' : '未配置'),
+    configRow('存储配置', status.checks && status.checks.storageConfigured ? '已配置' : '未配置')
+  ].join('');
 }
 
 function renderTrash() {
@@ -1674,7 +1735,8 @@ async function saveAlbumMeta() {
   }
   const payload = {
     name: $('#albumEditName').value.trim(),
-    description: $('#albumEditDescription').value.trim()
+    description: $('#albumEditDescription').value.trim(),
+    sortMode: $('#albumSortMode').value
   };
   const data = await request(`/api/albums/${album.id}`, {
     method: 'PATCH',
@@ -1700,6 +1762,38 @@ async function setAlbumCoverFromCurrent() {
   });
   await refreshAlbums();
   toast('相册封面已更新');
+}
+
+async function removeCurrentFromAlbum() {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId);
+  const image = currentImage();
+  if (!album || !image) {
+    toast('先选择相册和当前图片');
+    return;
+  }
+  await request(`/api/albums/${album.id}/images/${image.id}`, { method: 'DELETE' });
+  await refreshAlbums();
+  await refreshImages();
+  renderAlbumDetail();
+  toast('已从相册移除当前图片');
+}
+
+async function reorderCurrentAlbumImage(direction) {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId);
+  const image = currentImage();
+  if (!album || !image) {
+    toast('先选择相册和当前图片');
+    return;
+  }
+  await request(`/api/albums/${album.id}/reorder`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ imageId: image.id, direction })
+  });
+  await refreshAlbums();
+  await refreshImages();
+  renderAlbumDetail();
+  toast(direction === 'up' ? '当前图片已上移' : '当前图片已下移');
 }
 
 async function deleteAlbum() {
@@ -1742,6 +1836,45 @@ async function emptyTrash() {
   await request('/api/trash/empty', { method: 'POST' });
   await refreshTrash();
   toast('回收站已清空');
+}
+
+async function sendTelegramTest() {
+  const result = $('#telegramTestResult');
+  if (result) result.textContent = '正在发送测试消息...';
+  try {
+    const data = await request('/api/integrations/telegram/test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chatId: $('#telegramTestChatId') ? $('#telegramTestChatId').value.trim() : '',
+        message: $('#telegramTestMessage') ? $('#telegramTestMessage').value.trim() : ''
+      })
+    });
+    if (result) result.textContent = `测试消息已发送：${data.result && data.result.result ? data.result.result.message_id : 'ok'}`;
+    await refreshTelegramStatus();
+    toast('Telegram 测试消息已发送');
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
+}
+
+async function migrateStorageData() {
+  const result = $('#storageMigrateResult');
+  if (result) result.textContent = '正在迁移已有文件...';
+  try {
+    const data = await request('/api/integrations/storage/migrate', { method: 'POST' });
+    if (result) {
+      result.textContent = data.failed && data.failed.length
+        ? `迁移完成，成功 ${data.migrated.length}，失败 ${data.failed.length}`
+        : `迁移完成，成功 ${data.migrated.length} 个文件`;
+    }
+    await refreshStorageStatus();
+    toast(data.failed && data.failed.length ? '迁移已完成，但存在失败项' : '存储迁移已完成');
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    toast(error.message);
+  }
 }
 
 async function downloadSelected() {

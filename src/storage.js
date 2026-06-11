@@ -23,9 +23,7 @@ class LocalStorage {
   saveImage({ buffer, mime, originalName, source, owner }) {
     this.ensure();
     const record = createImageRecord({ buffer, mime, originalName, source, owner });
-    const filePath = this.pathFor(record);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, buffer);
+    this.writeObject(record, buffer, mime);
     return record;
   }
 
@@ -39,6 +37,12 @@ class LocalStorage {
       buffer: fs.readFileSync(filePath),
       mime: image.mime
     };
+  }
+
+  writeObject(image, buffer) {
+    const filePath = this.pathFor(image);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, buffer);
   }
 
   delete(image) {
@@ -75,15 +79,7 @@ class S3Storage {
   async saveImage({ buffer, mime, originalName, source, owner }) {
     this.ensure();
     const record = createImageRecord({ buffer, mime, originalName, source, owner, prefix: this.prefix });
-    const target = this.buildRequest('PUT', record.storageKey, buffer, mime);
-    const response = await fetch(target.url, {
-      method: 'PUT',
-      headers: target.headers,
-      body: buffer
-    });
-    if (!response.ok) {
-      throw new Error(`Object storage upload failed: ${response.status}`);
-    }
+    await this.writeObject(record, buffer, mime);
     return record;
   }
 
@@ -118,6 +114,18 @@ class S3Storage {
   getPublicObjectUrl(image) {
     if (!this.publicBaseUrl) return '';
     return `${this.publicBaseUrl}/${encodeURIComponentPath(image.storageKey || image.fileName)}`;
+  }
+
+  async writeObject(image, buffer, mime) {
+    const target = this.buildRequest('PUT', image.storageKey || image.fileName, buffer, mime);
+    const response = await fetch(target.url, {
+      method: 'PUT',
+      headers: target.headers,
+      body: buffer
+    });
+    if (!response.ok) {
+      throw new Error(`Object storage upload failed: ${response.status}`);
+    }
   }
 
   buildRequest(method, objectKey, bodyBuffer, mime) {

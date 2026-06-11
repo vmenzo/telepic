@@ -16,8 +16,10 @@ git pull --ff-only origin "$BRANCH"
 
 if docker compose version >/dev/null 2>&1; then
   docker compose up -d --build
+  docker compose ps
 else
   docker-compose up -d --build
+  docker-compose ps
 fi
 
 echo "Telepic updated."

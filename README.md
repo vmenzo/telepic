@@ -28,6 +28,15 @@ curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install
 - 公开地址 `PUBLIC_URL`
 - 管理员用户名
 
+安装完成后，脚本会直接输出：
+
+- 管理台地址
+- 管理员用户名
+- 管理员密码
+- API 管理密钥
+
+也就是说，首次安装后不需要你自己去猜密码，终端里会直接显示。
+
 如果已经确定配置，也可以通过环境变量无交互部署：
 
 ```bash
@@ -50,6 +59,89 @@ curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install
 - 管理员用户名
 - 管理员密码
 - API 管理密钥
+
+### Linux 安装说明
+
+这个安装脚本面向常见 Linux 发行版，已内置以下处理：
+
+- 自动检测包管理器：`apt`、`dnf`、`yum`、`apk`、`pacman`
+- 自动安装 Git、Docker、Docker Compose
+- 自动尝试启动 Docker 服务
+- 自动克隆仓库并生成 `.env`
+- 自动构建并启动 Telepic 容器
+- 如果容器启动失败，会直接输出最近日志，而不是假装安装成功
+
+### 安装后去哪里改配置
+
+安装目录默认是：
+
+```bash
+/opt/telepic
+```
+
+主要配置文件：
+
+```bash
+/opt/telepic/.env
+```
+
+常见后续操作：
+
+```bash
+cd /opt/telepic
+docker compose ps
+docker compose logs -f
+docker compose restart
+```
+
+如果你修改了 `.env`，重新加载：
+
+```bash
+cd /opt/telepic
+docker compose up -d --build
+```
+
+### 常见部署方式
+
+只想先跑起来，本地端口访问：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh | sudo sh
+```
+
+有域名，直接无交互安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh \
+  | sudo env TELEPIC_NONINTERACTIVE=1 PUBLIC_URL=https://img.example.com sh
+```
+
+接对象存储一起装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh \
+  | sudo env TELEPIC_NONINTERACTIVE=1 \
+    PUBLIC_URL=https://img.example.com \
+    STORAGE_DRIVER=s3 \
+    S3_BUCKET=your-bucket \
+    S3_REGION=auto \
+    S3_ENDPOINT=https://your-endpoint.example \
+    S3_ACCESS_KEY_ID=your-key \
+    S3_SECRET_ACCESS_KEY=your-secret \
+    S3_PUBLIC_BASE_URL=https://cdn.example.com \
+    sh
+```
+
+接 Telegram Bot：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install.sh \
+  | sudo env TELEPIC_NONINTERACTIVE=1 \
+    PUBLIC_URL=https://img.example.com \
+    TELEGRAM_BOT_TOKEN=123456:abcdef \
+    TELEGRAM_ALLOWED_USER_IDS=123456789 \
+    sh
+```
 
 ## 更新
 

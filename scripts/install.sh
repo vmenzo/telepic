@@ -9,6 +9,19 @@ PORT="${PORT:-8787}"
 PUBLIC_URL="${PUBLIC_URL:-}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 TELEPIC_NONINTERACTIVE="${TELEPIC_NONINTERACTIVE:-}"
+PUBLIC_UPLOAD="${PUBLIC_UPLOAD:-false}"
+DATABASE_DRIVER="${DATABASE_DRIVER:-sqlite}"
+STORAGE_DRIVER="${STORAGE_DRIVER:-local}"
+S3_BUCKET="${S3_BUCKET:-}"
+S3_REGION="${S3_REGION:-auto}"
+S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-}"
+S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
+S3_PUBLIC_BASE_URL="${S3_PUBLIC_BASE_URL:-}"
+S3_PREFIX="${S3_PREFIX:-telepic}"
+S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_ALLOWED_USER_IDS="${TELEGRAM_ALLOWED_USER_IDS:-}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -111,6 +124,39 @@ start_docker() {
   fi
 }
 
+compose_ps() {
+  $COMPOSE ps >/dev/null 2>&1
+}
+
+compose_up() {
+  $COMPOSE up -d --build
+}
+
+compose_logs_tail() {
+  $COMPOSE logs --tail=120
+}
+
+service_ready() {
+  if ! compose_ps; then
+    return 1
+  fi
+  if $COMPOSE ps --format json >/dev/null 2>&1; then
+    $COMPOSE ps --format json | grep -q '"State":"running"' 2>/dev/null
+    return $?
+  fi
+  $COMPOSE ps | grep -qi "Up"
+}
+
+env_set() {
+  KEY="$1"
+  VALUE="$2"
+  if grep -q "^${KEY}=" .env 2>/dev/null; then
+    sed -i "s|^${KEY}=.*|${KEY}=${VALUE}|" .env
+  else
+    printf "%s=%s\n" "$KEY" "$VALUE" >> .env
+  fi
+}
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root, for example: sudo sh scripts/install.sh"
   exit 1
@@ -156,17 +202,29 @@ if [ ! -f .env ]; then
   ADMIN_TOKEN="tp_admin_$(random_secret)"
   ADMIN_PASSWORD="tp_pass_$(random_secret)"
   WEBHOOK_SECRET="tp_wh_$(random_secret)"
-  sed -i "s|^HOST=.*|HOST=0.0.0.0|" .env
-  sed -i "s|^PORT=.*|PORT=${PORT}|" .env
-  sed -i "s|^PUBLIC_URL=.*|PUBLIC_URL=${PUBLIC_URL}|" .env
-  sed -i "s|^DATA_DIR=.*|DATA_DIR=/app/data|" .env
-  sed -i "s|^DATABASE_DRIVER=.*|DATABASE_DRIVER=sqlite|" .env
-  sed -i "s|^DATABASE_FILE=.*|DATABASE_FILE=/app/data/telepic.sqlite|" .env
-  sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|" .env
-  sed -i "s|^ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME}|" .env
-  sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" .env
-  sed -i "s|^ADMIN_SESSION_HOURS=.*|ADMIN_SESSION_HOURS=168|" .env
-  sed -i "s|^TELEGRAM_WEBHOOK_SECRET=.*|TELEGRAM_WEBHOOK_SECRET=${WEBHOOK_SECRET}|" .env
+  env_set HOST "0.0.0.0"
+  env_set PORT "${PORT}"
+  env_set PUBLIC_URL "${PUBLIC_URL}"
+  env_set DATA_DIR "/app/data"
+  env_set DATABASE_DRIVER "${DATABASE_DRIVER}"
+  env_set DATABASE_FILE "/app/data/telepic.sqlite"
+  env_set STORAGE_DRIVER "${STORAGE_DRIVER}"
+  env_set S3_BUCKET "${S3_BUCKET}"
+  env_set S3_REGION "${S3_REGION}"
+  env_set S3_ENDPOINT "${S3_ENDPOINT}"
+  env_set S3_ACCESS_KEY_ID "${S3_ACCESS_KEY_ID}"
+  env_set S3_SECRET_ACCESS_KEY "${S3_SECRET_ACCESS_KEY}"
+  env_set S3_PUBLIC_BASE_URL "${S3_PUBLIC_BASE_URL}"
+  env_set S3_PREFIX "${S3_PREFIX}"
+  env_set S3_FORCE_PATH_STYLE "${S3_FORCE_PATH_STYLE}"
+  env_set ADMIN_TOKEN "${ADMIN_TOKEN}"
+  env_set ADMIN_USERNAME "${ADMIN_USERNAME}"
+  env_set ADMIN_PASSWORD "${ADMIN_PASSWORD}"
+  env_set ADMIN_SESSION_HOURS "168"
+  env_set PUBLIC_UPLOAD "${PUBLIC_UPLOAD}"
+  env_set TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}"
+  env_set TELEGRAM_WEBHOOK_SECRET "${WEBHOOK_SECRET}"
+  env_set TELEGRAM_ALLOWED_USER_IDS "${TELEGRAM_ALLOWED_USER_IDS}"
 else
   ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | tail -n 1 | cut -d= -f2- || true)"
   ADMIN_USERNAME="$(grep '^ADMIN_USERNAME=' .env | tail -n 1 | cut -d= -f2- || true)"
@@ -177,10 +235,24 @@ else
   if [ -z "$ADMIN_PASSWORD" ]; then
     ADMIN_PASSWORD="$ADMIN_TOKEN"
   fi
+  env_set HOST "0.0.0.0"
+  env_set PORT "${PORT}"
+  env_set PUBLIC_URL "${PUBLIC_URL}"
 fi
 
 echo "==> Starting Docker service"
-$COMPOSE up -d --build
+compose_up
+
+if ! service_ready; then
+  echo ""
+  echo "Telepic failed to start. Recent container logs:"
+  compose_logs_tail || true
+  echo ""
+  echo "Please check the values in ${APP_DIR}/.env and run:"
+  echo "  cd ${APP_DIR}"
+  echo "  ${COMPOSE} up -d --build"
+  exit 1
+fi
 
 echo ""
 echo "Telepic is running."

@@ -160,6 +160,22 @@ docker compose restart
 docker compose down
 ```
 
+如果你想在 Linux 机器上先做一轮部署自检，再决定是否上线：
+
+```bash
+cd /opt/telepic
+sh scripts/self-check.sh
+```
+
+它会依次检查：
+
+- npm 依赖安装
+- `src/server.js` 语法
+- `src/web.js` 语法
+- `public/app.js` 语法
+- `docker compose` 配置
+- Docker 镜像构建
+
 ## 本地运行
 
 需要 Node.js 22.5 或更高版本。

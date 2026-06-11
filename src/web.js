@@ -889,17 +889,17 @@ function htmlPage(config) {
             +     '<span class="theme-card-cover" style="background:' + escapeHtml(item.bg || '#eef1ee') + '"></span>'
             +     '<span class="theme-card-body">'
             +       '<strong>' + escapeHtml(item.label || item.id) + '</strong>'
-            +       '<small>' + escapeHtml(item.author || 'Telepic') + '</small>'
-            +       '<span>' + escapeHtml(item.description || '') + '</span>'
+            +       '<span class="theme-card-meta">' + escapeHtml(item.author || 'Telepic') + '</span>'
+            +       '<span class="theme-card-desc">' + escapeHtml(item.description || '') + '</span>'
             +     '</span>'
             +   '</button>'
-            +   '<span class="theme-card-actions">'
+            +   '<div class="theme-card-actions">'
             +     '<small>' + escapeHtml(item.category || (builtin ? '内置主题' : installed ? '我的主题' : '推荐主题')) + '</small>'
             +     '<span class="theme-card-buttons">'
             +       '<button type="button" class="secondary" data-theme-action="apply" data-theme-id="' + escapeHtml(item.id) + '">启用</button>'
             +       (!builtin ? '<button type="button" class="secondary" data-theme-action="' + (item.source === 'recommended' ? 'install' : 'clone') + '" data-theme-id="' + escapeHtml(item.id) + '">' + escapeHtml(actionLabel) + '</button>' : '')
             +     '</span>'
-            +   '</span>'
+            +   '</div>'
             + '</article>';
         }).join('');
       }

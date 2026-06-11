@@ -2473,17 +2473,17 @@ function renderThemeStore() {
             <span class="theme-card-cover" style="background:${escapeHtml(item.backdrop || item.bg)}; ${item.image ? `background-image:url('${escapeHtml(item.image)}'); background-size:cover; background-position:center;` : ''}"></span>
             <span class="theme-card-body">
               <strong>${escapeHtml(item.label)}</strong>
-              <small>${escapeHtml(item.author || 'Telepic')}</small>
-              <span>${escapeHtml(item.description || '')}</span>
+              <span class="theme-card-meta">${escapeHtml(item.author || 'Telepic')}</span>
+              <span class="theme-card-desc">${escapeHtml(item.description || '')}</span>
             </span>
           </button>
-          <span class="theme-card-actions">
+          <div class="theme-card-actions">
             <small>${escapeHtml(THEME_SOURCE_LABELS[item.source] || item.category || '主题')}</small>
             <span class="theme-card-buttons">
               <button type="button" class="secondary" data-theme-action="apply" data-theme-id="${escapeHtml(item.id)}">${active ? '当前使用' : '启用'}</button>
               ${!builtin ? `<button type="button" class="secondary" data-theme-action="${recommendedTheme && !installed ? 'install' : 'clone'}" data-theme-id="${escapeHtml(item.id)}">${escapeHtml(secondaryLabel)}</button>` : ''}
             </span>
-          </span>
+          </div>
         </article>
       `;
     }).join('');

@@ -7,6 +7,7 @@ const config = require('./config');
 const { bearerToken, createAdminSession, refreshAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession } = require('./auth');
 const { createDb } = require('./db');
 const { parseMultipartRequest } = require('./multipart');
+const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, settingsPath, writeSettings } = require('./settings');
 const { createStorage } = require('./storage');
 const { handleTelegramUpdate, telegramApi } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
@@ -232,7 +233,7 @@ async function route(req, res) {
     const id = pathname.split('/')[3];
     const image = db.deleteImage(id);
     if (!image) return json(res, 404, { error: 'Image not found' });
-    moveImageToRecycleBin(image, auth.actor);
+    moveImageToRecycleBinWithEvent(image, auth.actor);
     return json(res, 200, { ok: true });
   }
 
@@ -246,7 +247,7 @@ async function route(req, res) {
     for (const id of ids) {
       const image = db.deleteImage(String(id));
       if (image) {
-        moveImageToRecycleBin(image, auth.actor);
+        moveImageToRecycleBinWithEvent(image, auth.actor);
         deleted.push(id);
       } else {
         missing.push(id);
@@ -575,7 +576,7 @@ async function route(req, res) {
   if (req.method === 'POST' && /^\/api\/trash\/[^/]+\/restore$/.test(pathname)) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const item = restoreTrashItem(pathname.split('/')[3], auth.actor);
+    const item = restoreTrashItemWithEvent(pathname.split('/')[3], auth.actor);
     if (!item) return json(res, 404, { error: 'Recycle bin item not found' });
     return json(res, 200, { ok: true, image: publicImage(item) });
   }
@@ -583,7 +584,7 @@ async function route(req, res) {
   if (req.method === 'DELETE' && /^\/api\/trash\/[^/]+$/.test(pathname)) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const item = await permanentlyDeleteTrashItem(pathname.split('/')[3], auth.actor);
+    const item = await permanentlyDeleteTrashItemWithEvent(pathname.split('/')[3], auth.actor);
     if (!item) return json(res, 404, { error: 'Recycle bin item not found' });
     return json(res, 200, { ok: true });
   }
@@ -795,16 +796,6 @@ function normalizeTags(input) {
   return [...new Set(list.map((item) => String(item).trim()).filter(Boolean).slice(0, 20))];
 }
 
-function ensureAlbums(settings) {
-  settings.albums ||= [];
-  return settings.albums;
-}
-
-function ensureRecycleBin(settings) {
-  settings.recycleBin ||= [];
-  return settings.recycleBin;
-}
-
 function listAlbums(settings) {
   return ensureAlbums(settings).map((album) => {
     const imageIds = Array.isArray(album.imageIds) ? album.imageIds.map(String) : [];
@@ -836,10 +827,6 @@ function publicAlbum(album) {
   };
 }
 
-function findAlbum(settings, id) {
-  return ensureAlbums(settings).find((album) => String(album.id) === String(id));
-}
-
 function createAlbumRecord(body, settings) {
   const name = String(body && body.name || '').trim().slice(0, 80);
   if (!name) {
@@ -865,16 +852,8 @@ function createAlbumRecord(body, settings) {
   };
 }
 
-function moveImageToRecycleBin(image, actor) {
-  const settings = readSettings();
-  const recycleBin = ensureRecycleBin(settings);
-  recycleBin.unshift({
-    ...image,
-    deletedAt: new Date().toISOString(),
-    deletedBy: actor || 'admin'
-  });
-  settings.updatedAt = new Date().toISOString();
-  writeSettings(settings);
+function moveImageToRecycleBinWithEvent(image, actor) {
+  moveImageToRecycleBin(config, image, actor);
   db.addEvent('image.trashed', { actor, id: image.id });
 }
 
@@ -893,44 +872,18 @@ function publicTrashItem(item) {
   };
 }
 
-function restoreTrashItem(id, actor) {
-  const settings = readSettings();
-  const recycleBin = ensureRecycleBin(settings);
-  const index = recycleBin.findIndex((item) => String(item.id) === String(id));
-  if (index === -1) return null;
-  const [item] = recycleBin.splice(index, 1);
-  delete item.deletedAt;
-  delete item.deletedBy;
-  db.addImage(item);
-  settings.updatedAt = new Date().toISOString();
-  writeSettings(settings);
+function restoreTrashItemWithEvent(id, actor) {
+  const item = restoreTrashItem(config, db, id, actor);
+  if (!item) return null;
   db.addEvent('image.restored', { actor, id: item.id });
   return item;
 }
 
-async function permanentlyDeleteTrashItem(id, actor) {
-  const settings = readSettings();
-  const recycleBin = ensureRecycleBin(settings);
-  const index = recycleBin.findIndex((item) => String(item.id) === String(id));
-  if (index === -1) return null;
-  const [item] = recycleBin.splice(index, 1);
-  await storage.delete(item);
-  removeImagesFromAlbums(settings, [item.id]);
-  settings.updatedAt = new Date().toISOString();
-  writeSettings(settings);
+async function permanentlyDeleteTrashItemWithEvent(id, actor) {
+  const item = await permanentlyDeleteTrashItem(config, storage, id);
+  if (!item) return null;
   db.addEvent('image.purged', { actor, id: item.id });
   return item;
-}
-
-function removeImagesFromAlbums(settings, ids) {
-  const removal = new Set(ids.map(String));
-  for (const album of ensureAlbums(settings)) {
-    album.imageIds = (album.imageIds || []).filter((id) => !removal.has(String(id)));
-    if (album.coverImageId && removal.has(String(album.coverImageId))) {
-      album.coverImageId = album.imageIds[0] || '';
-    }
-    album.updatedAt = new Date().toISOString();
-  }
 }
 
 function normalizeAlbumSortMode(value) {
@@ -1300,26 +1253,6 @@ function refreshSessionHeader(req, res) {
   res.setHeader('x-admin-session', refreshed.token);
   res.setHeader('x-admin-session-expires-at', refreshed.expiresAt);
   res.setHeader('x-admin-session-idle-expires-at', refreshed.idleExpiresAt);
-}
-
-function settingsPath() {
-  return path.join(config.dataDir, 'settings.json');
-}
-
-function readSettings() {
-  const filePath = settingsPath();
-  if (!fs.existsSync(filePath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
-  } catch {
-    return {};
-  }
-}
-
-function writeSettings(settings) {
-  const filePath = settingsPath();
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
 }
 
 function sanitizeTheme(theme) {

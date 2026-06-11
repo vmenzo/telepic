@@ -1,4 +1,5 @@
 const { isImageMime } = require('./utils');
+const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, restoreTrashItem, writeSettings } = require('./settings');
 
 const TG_PAGE_SIZE = 6;
 
@@ -55,6 +56,12 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
       '/token delete TokenID',
       '/fetch 图片URL',
       '/link 图片ID [page|raw|markdown|html|bbcode]',
+      '/albums 查看相册列表',
+      '/album add 相册ID 图片ID',
+      '/album remove 相册ID 图片ID',
+      '/trash 查看回收站',
+      '/system 查看系统状态',
+      '/storage 查看存储状态',
       '直接发送图片或图片文件也会自动上传。'
     ].join('\n'));
     return { ok: true };
@@ -157,8 +164,11 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
       return { ok: true };
     }
     const image = db.deleteImage(id);
-    if (image) await storage.delete(image);
-    await sendText(config, chatId, image ? `已删除：${id}` : `未找到图片：${id}`);
+    if (image) {
+      moveImageToRecycleBin(config, image, String(userId));
+      db.addEvent('image.trashed', { actor: String(userId), id: image.id, via: 'telegram' });
+    }
+    await sendText(config, chatId, image ? `已移入回收站：${id}` : `未找到图片：${id}`);
     return { ok: true };
   }
 
@@ -171,6 +181,31 @@ async function handleTelegramUpdate({ update, config, db, storage }) {
 
   if (command.name === 'token') {
     await handleTokenCommand({ command, chatId, config, db });
+    return { ok: true };
+  }
+
+  if (command.name === 'albums') {
+    await sendAlbumPanel({ config, db, chatId });
+    return { ok: true };
+  }
+
+  if (command.name === 'album') {
+    await handleAlbumCommand({ command, chatId, config, db });
+    return { ok: true };
+  }
+
+  if (command.name === 'trash') {
+    await sendTrashPanel({ config, db, chatId });
+    return { ok: true };
+  }
+
+  if (command.name === 'system') {
+    await sendSystemStatus(config, chatId, db);
+    return { ok: true };
+  }
+
+  if (command.name === 'storage') {
+    await sendStorageStatus(config, chatId);
     return { ok: true };
   }
 
@@ -307,16 +342,19 @@ async function handleCallbackQuery({ callback, config, db, storage }) {
 
   if (action === 'delete') {
     const image = db.deleteImage(a);
-    if (image) await storage.delete(image);
+    if (image) {
+      moveImageToRecycleBin(config, image, String(userId));
+      db.addEvent('image.trashed', { actor: String(userId), id: image.id, via: 'telegram' });
+    }
     await sendListPanel({
       config,
       db,
       chatId,
       offset: clamp(Number(b || 0), 0, 99999),
       editMessageId: messageId,
-      note: image ? `已删除 ${a}` : `未找到 ${a}`
+      note: image ? `已移入回收站 ${a}` : `未找到 ${a}`
     });
-    await answerCallback(config, callback.id, image ? '已删除' : '未找到图片');
+    await answerCallback(config, callback.id, image ? '已移入回收站' : '未找到图片');
     return { ok: true };
   }
 
@@ -330,6 +368,58 @@ async function handleCallbackQuery({ callback, config, db, storage }) {
     const token = db.deleteToken(a);
     await sendTokenPanel({ config, db, chatId, editMessageId: messageId, note: token ? `已删除密钥 ${a}` : `未找到密钥 ${a}` });
     await answerCallback(config, callback.id, token ? '已删除' : '未找到');
+    return { ok: true };
+  }
+
+  if (action === 'albums') {
+    await sendAlbumPanel({ config, db, chatId, editMessageId: messageId });
+    await answerCallback(config, callback.id);
+    return { ok: true };
+  }
+
+  if (action === 'albumview') {
+    await sendAlbumImagesPanel({ config, db, chatId, albumId: a, editMessageId: messageId });
+    await answerCallback(config, callback.id);
+    return { ok: true };
+  }
+
+  if (action === 'albumremove') {
+    const settings = readSettings(config);
+    const album = findAlbum(settings, a);
+    if (!album) {
+      await answerCallback(config, callback.id, '相册不存在');
+      return { ok: true };
+    }
+    album.imageIds = (album.imageIds || []).filter((id) => String(id) !== String(b));
+    if (String(album.coverImageId || '') === String(b)) album.coverImageId = album.imageIds[0] || '';
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(config, settings);
+    db.addEvent('album.image_removed', { actor: String(userId), albumId: a, imageId: b, via: 'telegram' });
+    await sendAlbumImagesPanel({ config, db, chatId, albumId: a, editMessageId: messageId, note: `已移出图片 ${b}` });
+    await answerCallback(config, callback.id, '已移出');
+    return { ok: true };
+  }
+
+  if (action === 'trash') {
+    await sendTrashPanel({ config, db, chatId, editMessageId: messageId });
+    await answerCallback(config, callback.id);
+    return { ok: true };
+  }
+
+  if (action === 'restore') {
+    const item = restoreTrashItem(config, db, a, String(userId));
+    if (item) db.addEvent('image.restored', { actor: String(userId), id: item.id, via: 'telegram' });
+    await sendTrashPanel({ config, db, chatId, editMessageId: messageId, note: item ? `已恢复 ${a}` : `未找到 ${a}` });
+    await answerCallback(config, callback.id, item ? '已恢复' : '未找到');
+    return { ok: true };
+  }
+
+  if (action === 'purge') {
+    const item = await permanentlyDeleteTrashItem(config, storage, a);
+    if (item) db.addEvent('image.purged', { actor: String(userId), id: item.id, via: 'telegram' });
+    await sendTrashPanel({ config, db, chatId, editMessageId: messageId, note: item ? `已彻底删除 ${a}` : `未找到 ${a}` });
+    await answerCallback(config, callback.id, item ? '已彻底删除' : '未找到');
     return { ok: true };
   }
 
@@ -390,6 +480,63 @@ async function handleTokenCommand({ command, chatId, config, db }) {
   await sendText(config, chatId, '未知 token 子命令。发送 /token help 查看说明。');
 }
 
+async function handleAlbumCommand({ command, chatId, config, db }) {
+  const sub = command.args[0];
+  if (!sub || sub === 'help') {
+    await sendText(config, chatId, [
+      '/albums',
+      '/album add 相册ID 图片ID',
+      '/album remove 相册ID 图片ID'
+    ].join('\n'));
+    return;
+  }
+  if (sub === 'add') {
+    const albumId = command.args[1];
+    const imageId = command.args[2];
+    if (!albumId || !imageId) {
+      await sendText(config, chatId, '用法：/album add 相册ID 图片ID');
+      return;
+    }
+    const settings = readSettings(config);
+    const album = findAlbum(settings, albumId);
+    if (!album) {
+      await sendText(config, chatId, `未找到相册：${albumId}`);
+      return;
+    }
+    album.imageIds = [...new Set([...(album.imageIds || []), imageId])];
+    if (!album.coverImageId) album.coverImageId = imageId;
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(config, settings);
+    db.addEvent('album.images_added', { actor: 'telegram', albumId, count: 1, via: 'telegram' });
+    await sendText(config, chatId, `已加入相册：${album.name}`);
+    return;
+  }
+  if (sub === 'remove') {
+    const albumId = command.args[1];
+    const imageId = command.args[2];
+    if (!albumId || !imageId) {
+      await sendText(config, chatId, '用法：/album remove 相册ID 图片ID');
+      return;
+    }
+    const settings = readSettings(config);
+    const album = findAlbum(settings, albumId);
+    if (!album) {
+      await sendText(config, chatId, `未找到相册：${albumId}`);
+      return;
+    }
+    album.imageIds = (album.imageIds || []).filter((id) => String(id) !== String(imageId));
+    if (String(album.coverImageId || '') === String(imageId)) album.coverImageId = album.imageIds[0] || '';
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(config, settings);
+    db.addEvent('album.image_removed', { actor: 'telegram', albumId, imageId, via: 'telegram' });
+    await sendText(config, chatId, `已从相册移除：${imageId}`);
+    return;
+  }
+  await sendText(config, chatId, '未知相册子命令。发送 /album help 查看说明。');
+}
+
 async function sendListPanel({ config, db, chatId, offset = 0, note = '', editMessageId = null }) {
   const records = db.listImages({ includePrivate: true, limit: TG_PAGE_SIZE + 1, offset, sort: 'newest' });
   const hasNext = records.length > TG_PAGE_SIZE;
@@ -408,7 +555,11 @@ async function sendListPanel({ config, db, chatId, offset = 0, note = '', editMe
   if (offset > 0) pager.push({ text: '上一页', callback_data: `tp:list:${Math.max(0, offset - TG_PAGE_SIZE)}` });
   if (hasNext) pager.push({ text: '下一页', callback_data: `tp:list:${offset + TG_PAGE_SIZE}` });
   if (pager.length) inline_keyboard.push(pager);
-  inline_keyboard.push([{ text: 'API 密钥', callback_data: 'tp:tokens' }]);
+  inline_keyboard.push([
+    { text: 'API 密钥', callback_data: 'tp:tokens' },
+    { text: '相册', callback_data: 'tp:albums' },
+    { text: '回收站', callback_data: 'tp:trash' }
+  ]);
   return sendOrEditMessage(config, {
     chatId,
     messageId: editMessageId,
@@ -487,6 +638,108 @@ async function sendTokenPanel({ config, db, chatId, editMessageId = null, note =
     text,
     reply_markup: { inline_keyboard }
   });
+}
+
+async function sendAlbumPanel({ config, db, chatId, editMessageId = null, note = '' }) {
+  const settings = readSettings(config);
+  const albums = ensureAlbums(settings);
+  const text = [
+    note || '相册列表',
+    '',
+    albums.length
+      ? albums.map((album) => `${album.id} · ${album.name}\n图片数：${(album.imageIds || []).length}\n描述：${album.description || '无'}`).join('\n\n')
+      : '还没有相册。'
+  ].join('\n');
+  const inline_keyboard = albums.slice(0, 12).map((album) => [
+    { text: `查看 ${truncate(album.name, 18)}`, callback_data: `tp:albumview:${album.id}` }
+  ]);
+  inline_keyboard.push([{ text: '回到图片列表', callback_data: 'tp:list:0' }]);
+  return sendOrEditMessage(config, {
+    chatId,
+    messageId: editMessageId,
+    text,
+    reply_markup: { inline_keyboard }
+  });
+}
+
+async function sendAlbumImagesPanel({ config, db, chatId, albumId, editMessageId = null, note = '' }) {
+  const settings = readSettings(config);
+  const album = findAlbum(settings, albumId);
+  if (!album) {
+    await sendText(config, chatId, `未找到相册：${albumId}`);
+    return;
+  }
+  const images = (album.imageIds || []).map((id) => db.getImage(id)).filter(Boolean).slice(0, 10);
+  const text = [
+    note || `相册：${album.name}`,
+    '',
+    `ID：${album.id}`,
+    `描述：${album.description || '无'}`,
+    '',
+    images.length ? images.map((image) => renderShortImage(image)).join('\n') : '相册里还没有图片。'
+  ].join('\n');
+  const inline_keyboard = images.slice(0, 8).map((image) => [
+    { text: `查看 ${truncate(image.originalName || image.id, 14)}`, callback_data: `tp:view:${image.id}:0` },
+    { text: '移出', callback_data: `tp:albumremove:${album.id}:${image.id}` }
+  ]);
+  inline_keyboard.push([{ text: '返回相册列表', callback_data: 'tp:albums' }]);
+  return sendOrEditMessage(config, {
+    chatId,
+    messageId: editMessageId,
+    text,
+    reply_markup: { inline_keyboard }
+  });
+}
+
+async function sendTrashPanel({ config, db, chatId, editMessageId = null, note = '' }) {
+  const settings = readSettings(config);
+  const items = ensureRecycleBin(settings).slice(0, 10);
+  const text = [
+    note || '回收站',
+    '',
+    items.length
+      ? items.map((item) => `${item.id} · ${truncate(item.originalName || item.fileName, 18)}\n删除时间：${item.deletedAt}`).join('\n\n')
+      : '回收站为空。'
+  ].join('\n');
+  const inline_keyboard = items.map((item) => [
+    { text: `恢复 ${truncate(item.originalName || item.id, 12)}`, callback_data: `tp:restore:${item.id}` },
+    { text: '彻底删除', callback_data: `tp:purge:${item.id}` }
+  ]);
+  inline_keyboard.push([{ text: '回到图片列表', callback_data: 'tp:list:0' }]);
+  return sendOrEditMessage(config, {
+    chatId,
+    messageId: editMessageId,
+    text,
+    reply_markup: { inline_keyboard }
+  });
+}
+
+async function sendSystemStatus(config, chatId, db) {
+  const settings = readSettings(config);
+  const memory = process.memoryUsage();
+  await sendText(config, chatId, [
+    '系统状态',
+    `PID：${process.pid}`,
+    `Node：${process.version}`,
+    `平台：${process.platform}/${process.arch}`,
+    `图片数：${db.stats().images}`,
+    `相册数：${ensureAlbums(settings).length}`,
+    `回收站：${ensureRecycleBin(settings).length}`,
+    `RSS：${formatBytes(memory.rss)}`,
+    `Heap：${formatBytes(memory.heapUsed)} / ${formatBytes(memory.heapTotal)}`
+  ].join('\n'));
+}
+
+async function sendStorageStatus(config, chatId) {
+  const settings = readSettings(config);
+  await sendText(config, chatId, [
+    '存储状态',
+    `驱动：${config.storageDriver}`,
+    `Bucket：${config.s3Bucket || '本地模式'}`,
+    `Endpoint：${config.s3Endpoint || '本地模式'}`,
+    `前缀：${config.s3Prefix || '未设置'}`,
+    `旧配置可迁移：${settings.previousStorageConfig && settings.previousStorageConfig.storageDriver ? '是' : '否'}`
+  ].join('\n'));
 }
 
 async function sendOrEditMessage(config, { chatId, messageId = null, text, reply_markup }) {

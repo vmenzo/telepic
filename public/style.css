@@ -779,6 +779,7 @@ a {
   max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 10px;
 }
 
 .theme-library-meta {
@@ -815,7 +816,7 @@ a {
   color: var(--ink);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 10px;
   align-items: start;
   text-align: left;
   overflow: hidden;
@@ -856,14 +857,14 @@ a {
 
 .theme-card-body {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   align-content: start;
 }
 
 .theme-card-body strong {
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.45;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -884,7 +885,7 @@ a {
 .theme-card-meta,
 .theme-card-desc {
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .theme-card-meta {
@@ -908,7 +909,7 @@ a {
   gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
-  padding-top: 2px;
+  padding-top: 4px;
 }
 
 .theme-card-actions small {
@@ -929,7 +930,7 @@ a {
 }
 
 .theme-card-actions button {
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 8px;
   font-size: 11px;
   white-space: nowrap;

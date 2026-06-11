@@ -198,6 +198,7 @@ function htmlPage(config) {
         <button type="button" class="main-nav-button" data-main-view="albums">相册</button>
         <button type="button" class="main-nav-button" data-main-view="bot">Bot 配置</button>
         <button type="button" class="main-nav-button" data-main-view="storage">存储桶</button>
+        <button type="button" class="main-nav-button" data-main-view="trash">回收站</button>
         <button type="button" class="main-nav-button" data-main-view="system">系统</button>
       </nav>
 
@@ -292,7 +293,7 @@ function htmlPage(config) {
             <div>
               <p class="panel-kicker">Albums</p>
               <h2>相册管理</h2>
-              <p class="section-text">相册基于图片标签组织，创建相册后可以把当前选中的图片加入相册，也可以点相册快速筛选。</p>
+              <p class="section-text">独立相册模块，支持创建相册、加入已选图片、设置封面、编辑描述和按相册筛选图片。</p>
             </div>
             <div class="actions">
               <input id="albumNameInput" class="wide-input" placeholder="新相册名称">
@@ -311,6 +312,31 @@ function htmlPage(config) {
           </div>
           <div id="albumResult" class="result-box"></div>
           <div id="albumGrid" class="album-grid"></div>
+          <section class="album-editor">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">Album Detail</p>
+                <h2>相册详情</h2>
+              </div>
+              <span id="albumDetailBadge" class="badge">未选择</span>
+            </div>
+            <div class="integration-grid">
+              <label class="field-stack">
+                <span>相册名称</span>
+                <input id="albumEditName" placeholder="相册名称">
+              </label>
+              <label class="field-stack">
+                <span>相册描述</span>
+                <input id="albumEditDescription" placeholder="相册描述">
+              </label>
+            </div>
+            <div class="actions actions-split">
+              <button id="saveAlbumMeta" class="secondary" type="button">保存相册信息</button>
+              <button id="setAlbumCoverFromCurrent" class="secondary" type="button">当前图片设为封面</button>
+              <button id="deleteAlbum" class="danger" type="button">删除相册</button>
+            </div>
+            <div id="albumDetailResult" class="result-box"></div>
+          </section>
         </section>
       </section>
 
@@ -323,6 +349,7 @@ function htmlPage(config) {
               <p class="section-text">在这里配置 Bot Token、Webhook、白名单用户，并把 Telegram 管理能力接到图床。</p>
             </div>
           </div>
+          <div id="telegramStatusPanel" class="status-panel-grid"></div>
           <div id="telegramConfigMount"></div>
         </section>
       </section>
@@ -336,7 +363,25 @@ function htmlPage(config) {
               <p class="section-text">支持 S3 兼容对象存储，可对接 Cloudflare R2、MinIO、Backblaze B2、AWS S3 等常见存储桶。</p>
             </div>
           </div>
+          <div id="storageStatusPanel" class="status-panel-grid"></div>
           <div id="storageConfigMount"></div>
+        </section>
+      </section>
+
+      <section id="view-trash" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Recycle Bin</p>
+              <h2>回收站</h2>
+              <p class="section-text">删除的图片会先进入回收站，可以恢复，也可以彻底清空。</p>
+            </div>
+            <div class="actions">
+              <button id="refreshTrash" class="secondary" type="button">刷新回收站</button>
+              <button id="emptyTrash" class="danger" type="button">清空回收站</button>
+            </div>
+          </div>
+          <div id="trashList" class="trash-list"></div>
         </section>
       </section>
 
@@ -395,6 +440,7 @@ function htmlPage(config) {
               <button id="selectAllVisible" class="secondary">全选当前结果</button>
               <button id="clearSelection" class="secondary">清空选择</button>
               <button id="copySelectedLinks" class="secondary">复制已选链接</button>
+              <button id="downloadSelected" class="secondary">下载已选</button>
             </div>
           </div>
 
@@ -414,6 +460,16 @@ function htmlPage(config) {
               <span>操作</span>
             </div>
             <div id="gallery" class="asset-table-body"></div>
+          </div>
+          <div class="pagination-bar">
+            <div class="selection-copy">
+              <strong id="pageSummary">第 1 页</strong>
+              <span id="pageMeta" class="muted-text">0 / 0</span>
+            </div>
+            <div class="actions">
+              <button id="prevPage" class="secondary" type="button">上一页</button>
+              <button id="nextPage" class="secondary" type="button">下一页</button>
+            </div>
           </div>
         </section>
 

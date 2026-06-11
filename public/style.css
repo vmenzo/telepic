@@ -325,6 +325,8 @@ a {
 .content-grid,
 .main-view,
 .album-grid,
+.status-panel-grid,
+.trash-list,
 .field-stack,
 .theme-stack {
   display: grid;
@@ -347,7 +349,7 @@ a {
 }
 
 .main-nav {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 16px;
   padding: 8px;
   border: 1px solid var(--line);
@@ -423,6 +425,22 @@ a {
 .album-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   padding: 18px;
+}
+
+.status-panel-grid {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trash-list {
+  padding: 18px;
+}
+
+.pagination-bar,
+.album-editor {
+  padding: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .album-card {
@@ -1346,6 +1364,10 @@ a {
     grid-template-columns: 54px minmax(220px, 1.2fr) minmax(180px, 1fr);
   }
 
+  .main-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .asset-table-head span:nth-child(4),
   .asset-table-head span:nth-child(5),
   .asset-row .asset-link,
@@ -1420,6 +1442,10 @@ a {
 
   .inspector-tabs {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .main-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

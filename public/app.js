@@ -99,14 +99,22 @@ const state = {
   adminUsername: localStorage.getItem('telepic.adminUsername') || 'admin',
   sessionIdleExpiresAt: Number(localStorage.getItem('telepic.sessionIdleExpiresAt') || 0),
   images: [],
+  imageTotal: 0,
+  imageLimit: 24,
+  imageOffset: 0,
   selected: new Set(),
+  albums: [],
+  activeAlbumId: '',
+  trashItems: [],
+  trashTotal: 0,
+  telegramStatus: null,
+  storageStatus: null,
   config: {},
   stats: { ...DEFAULT_STATS },
   activeImageId: null,
   uploadHistory: [],
   theme: loadTheme(),
   mainView: 'library',
-  activeAlbum: '',
   inspectorPane: 'detail',
   loginDismissed: sessionStorage.getItem('telepic.loginDismissed') === '1'
 };
@@ -182,11 +190,11 @@ function bindEvents() {
   on('#registerTelegramWebhook', 'click', registerTelegramWebhook);
   on('#saveStorageConfig', 'click', saveStorageConfig);
   on('#testStorageConfig', 'click', testStorageConfig);
-  on('#searchInput', 'input', debounce(refreshImages, 220));
-  on('#tagFilter', 'input', debounce(refreshImages, 220));
-  on('#visibilityFilter', 'change', refreshImages);
-  on('#sourceFilter', 'change', refreshImages);
-  on('#sortFilter', 'change', refreshImages);
+  on('#searchInput', 'input', debounce(resetImagePageAndRefresh, 220));
+  on('#tagFilter', 'input', debounce(resetImagePageAndRefresh, 220));
+  on('#visibilityFilter', 'change', resetImagePageAndRefresh);
+  on('#sourceFilter', 'change', resetImagePageAndRefresh);
+  on('#sortFilter', 'change', resetImagePageAndRefresh);
   on('#linkFormat', 'change', renderImages);
   on('#gallery', 'click', handleGalleryClick);
   on('#tokens', 'click', handleTokenClick);
@@ -196,6 +204,7 @@ function bindEvents() {
   on('#selectAllVisible', 'click', selectAllVisible);
   on('#clearSelection', 'click', clearSelection);
   on('#copySelectedLinks', 'click', copySelectedLinks);
+  on('#downloadSelected', 'click', downloadSelected);
   on('#applyBatchTags', 'click', applyBatchTags);
   on('#clearBatchTags', 'click', clearBatchTags);
   on('#mainNav', 'click', handleMainNav);
@@ -203,6 +212,14 @@ function bindEvents() {
   on('#assignSelectedAlbum', 'click', assignSelectedToAlbum);
   on('#clearAlbumFilter', 'click', clearAlbumFilter);
   on('#albumGrid', 'click', handleAlbumGridClick);
+  on('#saveAlbumMeta', 'click', saveAlbumMeta);
+  on('#setAlbumCoverFromCurrent', 'click', setAlbumCoverFromCurrent);
+  on('#deleteAlbum', 'click', deleteAlbum);
+  on('#refreshTrash', 'click', refreshTrash);
+  on('#emptyTrash', 'click', emptyTrash);
+  on('#trashList', 'click', handleTrashListClick);
+  on('#prevPage', 'click', () => changePage(-1));
+  on('#nextPage', 'click', () => changePage(1));
   on('#inspectorTabs', 'click', handleInspectorTabs);
   on('#themePreset', 'change', onThemePresetChange);
   on('#themeQuickPicks', 'click', handleThemeQuickPick);
@@ -483,6 +500,10 @@ async function refresh() {
     refreshConfig(),
     refreshStats(),
     refreshImages(),
+    refreshAlbums(),
+    refreshTelegramStatus(),
+    refreshStorageStatus(),
+    refreshTrash(),
     refreshTokens(),
     refreshEvents()
   ];
@@ -607,17 +628,22 @@ async function refreshStats() {
 
 async function refreshImages() {
   const params = new URLSearchParams({
-    limit: '120',
+    limit: String(state.imageLimit),
+    offset: String(state.imageOffset),
     q: $('#searchInput').value.trim(),
-    tag: state.activeAlbum || $('#tagFilter').value.trim(),
+    tag: $('#tagFilter').value.trim(),
     visibility: $('#visibilityFilter').value,
     source: $('#sourceFilter').value,
     sort: $('#sortFilter').value
   });
+  if (state.activeAlbumId) params.set('albumId', state.activeAlbumId);
 
   try {
     const data = await request(`/api/images?${params.toString()}`);
-    state.images = data.images;
+    state.images = data.images || [];
+    state.imageTotal = Number(data.total || state.images.length || 0);
+    state.imageLimit = Number(data.limit || state.imageLimit);
+    state.imageOffset = Number(data.offset || 0);
     state.selected = new Set([...state.selected].filter((id) => state.images.some((image) => image.id === id)));
 
     if (!state.activeImageId || !state.images.some((image) => image.id === state.activeImageId)) {
@@ -627,6 +653,7 @@ async function refreshImages() {
     renderImages();
     renderSelectionSummary();
     renderImageDetail();
+    renderPagination();
     renderAlbums();
   } catch (error) {
     $('#gallery').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
@@ -644,6 +671,75 @@ async function refreshTokens() {
     renderTokens(data.tokens);
   } catch (error) {
     $('#tokens').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function refreshAlbums() {
+  if (!state.adminToken) {
+    state.albums = [];
+    renderAlbums();
+    return;
+  }
+  try {
+    const data = await request('/api/albums');
+    state.albums = data.albums || [];
+    if (state.activeAlbumId && !state.albums.some((album) => album.id === state.activeAlbumId)) {
+      state.activeAlbumId = '';
+    }
+    renderAlbums();
+    renderAlbumDetail();
+  } catch (error) {
+    state.albums = [];
+    const grid = $('#albumGrid');
+    if (grid) grid.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function refreshTrash() {
+  if (!state.adminToken) {
+    state.trashItems = [];
+    state.trashTotal = 0;
+    renderTrash();
+    return;
+  }
+  try {
+    const data = await request('/api/trash?limit=100');
+    state.trashItems = data.items || [];
+    state.trashTotal = Number(data.total || state.trashItems.length || 0);
+    renderTrash();
+  } catch (error) {
+    const list = $('#trashList');
+    if (list) list.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function refreshTelegramStatus() {
+  if (!state.adminToken) {
+    state.telegramStatus = null;
+    renderTelegramStatus();
+    return;
+  }
+  try {
+    state.telegramStatus = await request('/api/integrations/telegram/status');
+    renderTelegramStatus();
+  } catch (error) {
+    state.telegramStatus = { ok: false, error: error.message };
+    renderTelegramStatus();
+  }
+}
+
+async function refreshStorageStatus() {
+  if (!state.adminToken) {
+    state.storageStatus = null;
+    renderStorageStatus();
+    return;
+  }
+  try {
+    state.storageStatus = await request('/api/integrations/storage/status');
+    renderStorageStatus();
+  } catch (error) {
+    state.storageStatus = { ok: false, message: error.message };
+    renderStorageStatus();
   }
 }
 
@@ -1205,6 +1301,99 @@ function renderSelectionSummary() {
   renderBatchTagSummary();
 }
 
+function renderPagination() {
+  const currentPage = Math.floor(state.imageOffset / state.imageLimit) + 1;
+  const totalPages = Math.max(1, Math.ceil(state.imageTotal / state.imageLimit));
+  $('#pageSummary').textContent = `第 ${currentPage} / ${totalPages} 页`;
+  $('#pageMeta').textContent = `${state.images.length} / ${state.imageTotal}`;
+  $('#prevPage').disabled = state.imageOffset <= 0;
+  $('#nextPage').disabled = state.imageOffset + state.imageLimit >= state.imageTotal;
+}
+
+function changePage(direction) {
+  const nextOffset = Math.max(0, state.imageOffset + direction * state.imageLimit);
+  if (nextOffset === state.imageOffset) return;
+  state.imageOffset = nextOffset;
+  refreshImages();
+}
+
+function resetImagePageAndRefresh() {
+  state.imageOffset = 0;
+  refreshImages();
+}
+
+function renderAlbumDetail() {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId) || null;
+  $('#albumDetailBadge').textContent = album ? album.name : '未选择';
+  if ($('#albumEditName')) $('#albumEditName').value = album ? (album.name || '') : '';
+  if ($('#albumEditDescription')) $('#albumEditDescription').value = album ? (album.description || '') : '';
+  const result = $('#albumDetailResult');
+  if (result && !album) result.textContent = '选择一个相册后可编辑名称、描述和封面。';
+}
+
+function renderTelegramStatus() {
+  const panel = $('#telegramStatusPanel');
+  if (!panel) return;
+  const status = state.telegramStatus;
+  if (!status) {
+    panel.innerHTML = '<p class="empty-state">登录管理员后可查看 Bot 状态。</p>';
+    return;
+  }
+  panel.innerHTML = `
+    <article class="dashboard-panel">
+      <div class="pane-head"><div><p class="panel-kicker">Bot 状态</p><h2>${status.enabled ? '已配置' : '未配置'}</h2></div></div>
+      <div class="config-list">
+        ${configRow('Webhook', status.webhookUrl || '未生成')}
+        ${configRow('允许用户', (status.allowedUserIds || []).join(', ') || '未配置')}
+        ${configRow('机器人', status.bot && status.bot.result ? `${status.bot.result.username || ''} (${status.bot.result.id})` : '未获取')}
+        ${configRow('最后错误', status.webhook && status.webhook.result ? (status.webhook.result.last_error_message || '无') : (status.error || '无'))}
+      </div>
+    </article>
+  `;
+}
+
+function renderStorageStatus() {
+  const panel = $('#storageStatusPanel');
+  if (!panel) return;
+  const status = state.storageStatus;
+  if (!status) {
+    panel.innerHTML = '<p class="empty-state">登录管理员后可查看存储状态。</p>';
+    return;
+  }
+  panel.innerHTML = `
+    <article class="dashboard-panel">
+      <div class="pane-head"><div><p class="panel-kicker">存储状态</p><h2>${status.driver || 'unknown'}</h2></div></div>
+      <div class="config-list">
+        ${configRow('读写测试', status.ok ? (status.testRead ? '通过' : '待检查') : '失败')}
+        ${configRow('Bucket', status.bucket || '本地模式')}
+        ${configRow('Endpoint', status.endpoint || '本地模式')}
+        ${configRow('前缀', status.prefix || '未设置')}
+        ${configRow('图片数', String(status.imageCount || 0))}
+        ${configRow('回收站', String(status.recycleCount || 0))}
+        ${configRow('说明', status.message || '无')}
+      </div>
+    </article>
+  `;
+}
+
+function renderTrash() {
+  const list = $('#trashList');
+  if (!list) return;
+  list.innerHTML = state.trashItems.map((item) => `
+    <article class="token-card" data-trash-id="${item.id}">
+      <div class="token-head">
+        <strong>${escapeHtml(item.originalName || item.id)}</strong>
+        <div class="actions">
+          <button class="secondary" data-trash-action="restore">恢复</button>
+          <button class="danger" data-trash-action="purge">彻底删除</button>
+        </div>
+      </div>
+      <div class="token-meta">删除时间：${formatDate(item.deletedAt)}</div>
+      <div class="token-meta">来源：${escapeHtml(sourceName(item.source))} · ${formatBytes(item.size || 0)}</div>
+    </article>
+  `).join('') || '<p class="empty-state">回收站是空的。</p>';
+}
+
 function handleMainNav(event) {
   const button = event.target.closest('[data-main-view]');
   if (!button) return;
@@ -1222,7 +1411,11 @@ function setMainView(view) {
   });
   if (view === 'system') setInspectorPane('system');
   if (view === 'bot' || view === 'storage') mountIntegrationPanels();
-  if (view === 'albums') renderAlbums();
+  if (view === 'albums') {
+    renderAlbums();
+    renderAlbumDetail();
+  }
+  if (view === 'trash') renderTrash();
 }
 
 function mountIntegrationPanels() {
@@ -1238,43 +1431,18 @@ function mountIntegrationPanels() {
   }
 }
 
-function albumTag(name) {
-  const clean = String(name || '').trim().replace(/^相册[:：]/, '').slice(0, 40);
-  return clean ? `相册:${clean}` : '';
-}
-
-function albumNameFromTag(tag) {
-  return String(tag || '').replace(/^相册[:：]/, '');
-}
-
-function albumList() {
-  const map = new Map();
-  for (const image of state.images) {
-    for (const tag of image.tags || []) {
-      if (!String(tag).startsWith('相册:')) continue;
-      const name = albumNameFromTag(tag);
-      if (!map.has(tag)) map.set(tag, { tag, name, count: 0, bytes: 0, cover: image });
-      const album = map.get(tag);
-      album.count += 1;
-      album.bytes += image.size || 0;
-      if (!album.cover) album.cover = image;
-    }
-  }
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-}
-
 function renderAlbums() {
   const grid = $('#albumGrid');
   if (!grid) return;
-  const albums = albumList();
-  grid.innerHTML = albums.map((album) => `
-    <article class="album-card ${state.activeAlbum === album.tag ? 'is-active' : ''}" data-album="${escapeHtml(album.tag)}">
+  grid.innerHTML = state.albums.map((album) => `
+    <article class="album-card ${state.activeAlbumId === album.id ? 'is-active' : ''}" data-album="${escapeHtml(album.id)}">
       <div class="album-cover">
-        ${album.cover ? `<img src="${previewRawUrl(album.cover)}" alt="${escapeHtml(album.name)}" loading="lazy">` : '<span>相册</span>'}
+        ${album.coverImage ? `<img src="${previewRawUrl(album.coverImage)}" alt="${escapeHtml(album.name)}" loading="lazy">` : '<span>相册</span>'}
       </div>
       <div class="album-body">
         <strong>${escapeHtml(album.name)}</strong>
-        <span>${album.count} 张图片 · ${formatBytes(album.bytes)}</span>
+        <span>${album.imageCount || 0} 张图片</span>
+        <span>${escapeHtml(album.description || '未填写描述')}</span>
       </div>
       <div class="actions">
         <button type="button" class="secondary" data-album-action="open">打开</button>
@@ -1287,47 +1455,47 @@ function renderAlbums() {
 
 async function createAlbum() {
   const input = $('#albumNameInput');
-  const tag = albumTag(input ? input.value : '');
   const result = $('#albumResult');
-  if (!tag) {
+  const name = input ? input.value.trim() : '';
+  if (!name) {
     if (result) result.textContent = '请输入相册名称。';
     return;
   }
+  const data = await request('/api/albums', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
   if (input) input.value = '';
-  if (result) result.textContent = `相册“${albumNameFromTag(tag)}”已创建。选择图片后可加入这个相册。`;
-  state.activeAlbum = tag;
-  setMainView('library');
-  $('#tagFilter').value = tag;
+  if (result) result.textContent = `相册“${data.album.name}”已创建。`;
+  state.activeAlbumId = data.album.id;
+  await refreshAlbums();
   await refreshImages();
+  renderAlbumDetail();
+  setMainView('albums');
   toast('相册已创建');
 }
 
 async function assignSelectedToAlbum() {
   const ids = [...state.selected];
-  const inputTag = albumTag($('#albumNameInput') ? $('#albumNameInput').value : '');
-  const tag = inputTag || state.activeAlbum;
+  const activeAlbum = state.albums.find((album) => album.id === state.activeAlbumId);
   if (!ids.length) {
     toast('先在图片页选择要加入相册的图片');
     return;
   }
-  if (!tag) {
-    toast('先输入相册名称或打开一个相册');
+  if (!activeAlbum) {
+    toast('先创建相册或选择一个相册');
     return;
   }
-  const selectedImages = state.images.filter((image) => ids.includes(image.id));
-  for (const image of selectedImages) {
-    const tags = Array.from(new Set([...(image.tags || []), tag]));
-    await request(`/api/images/${image.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tags })
-    });
-  }
+  await request(`/api/albums/${activeAlbum.id}/images`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids })
+  });
   if ($('#albumNameInput')) $('#albumNameInput').value = '';
-  state.activeAlbum = tag;
-  $('#tagFilter').value = tag;
-  toast(`已加入相册：${albumNameFromTag(tag)}`);
-  await refresh();
+  toast(`已加入相册：${activeAlbum.name}`);
+  await refreshAlbums();
+  await refreshImages();
   setMainView('albums');
 }
 
@@ -1335,22 +1503,22 @@ async function handleAlbumGridClick(event) {
   const card = event.target.closest('[data-album]');
   if (!card) return;
   const action = event.target.closest('[data-album-action]');
-  const tag = card.dataset.album;
-  state.activeAlbum = tag;
+  const albumId = card.dataset.album;
+  state.activeAlbumId = albumId;
   if (action && action.dataset.albumAction === 'add') {
     await assignSelectedToAlbum();
     return;
   }
-  $('#tagFilter').value = tag;
+  renderAlbumDetail();
   setMainView('library');
+  state.imageOffset = 0;
   await refreshImages();
-  toast(`已筛选相册：${albumNameFromTag(tag)}`);
+  const album = state.albums.find((item) => item.id === albumId);
+  toast(`已筛选相册：${album ? album.name : ''}`);
 }
 
 async function clearAlbumFilter() {
-  state.activeAlbum = '';
-  const tagFilter = $('#tagFilter');
-  if (tagFilter && String(tagFilter.value).startsWith('相册:')) tagFilter.value = '';
+  state.activeAlbumId = '';
   await refreshImages();
   renderAlbums();
   toast('已清除相册筛选');
@@ -1496,6 +1664,111 @@ async function clearBatchTags() {
 
   toast(`已清空 ${ids.length} 张图片的标签`);
   await refresh();
+}
+
+async function saveAlbumMeta() {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId);
+  if (!album) {
+    toast('先选择一个相册');
+    return;
+  }
+  const payload = {
+    name: $('#albumEditName').value.trim(),
+    description: $('#albumEditDescription').value.trim()
+  };
+  const data = await request(`/api/albums/${album.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  $('#albumDetailResult').textContent = `已保存相册：${data.album.name}`;
+  await refreshAlbums();
+  toast('相册信息已保存');
+}
+
+async function setAlbumCoverFromCurrent() {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId);
+  const image = currentImage();
+  if (!album || !image) {
+    toast('先选择相册和当前图片');
+    return;
+  }
+  await request(`/api/albums/${album.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ coverImageId: image.id })
+  });
+  await refreshAlbums();
+  toast('相册封面已更新');
+}
+
+async function deleteAlbum() {
+  const album = state.albums.find((item) => item.id === state.activeAlbumId);
+  if (!album) {
+    toast('先选择一个相册');
+    return;
+  }
+  if (!confirm(`确定删除相册 ${album.name} 吗？`)) return;
+  await request(`/api/albums/${album.id}`, { method: 'DELETE' });
+  state.activeAlbumId = '';
+  await refreshAlbums();
+  await refreshImages();
+  toast('相册已删除');
+}
+
+async function handleTrashListClick(event) {
+  const card = event.target.closest('[data-trash-id]');
+  const action = event.target.closest('[data-trash-action]');
+  if (!card || !action) return;
+  const id = card.dataset.trashId;
+  if (action.dataset.trashAction === 'restore') {
+    await request(`/api/trash/${id}/restore`, { method: 'POST' });
+    await refresh();
+    toast('图片已恢复');
+    return;
+  }
+  if (!confirm('确定彻底删除这张图片吗？')) return;
+  await request(`/api/trash/${id}`, { method: 'DELETE' });
+  await refreshTrash();
+  toast('图片已彻底删除');
+}
+
+async function emptyTrash() {
+  if (!state.trashItems.length) {
+    toast('回收站已经是空的');
+    return;
+  }
+  if (!confirm(`确定清空回收站中的 ${state.trashItems.length} 项吗？`)) return;
+  await request('/api/trash/empty', { method: 'POST' });
+  await refreshTrash();
+  toast('回收站已清空');
+}
+
+async function downloadSelected() {
+  const ids = [...state.selected];
+  if (!ids.length) {
+    toast('先选择图片');
+    return;
+  }
+  const response = await fetch('/api/images/download', {
+    method: 'POST',
+    headers: headers({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ ids })
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(humanizeError(data.error || '下载失败'));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `telepic-export-${Date.now()}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast(`已开始下载 ${ids.length} 张图片`);
 }
 
 async function copyText(value) {

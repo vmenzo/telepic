@@ -64,6 +64,27 @@ async function route(req, res) {
     return json(res, 200, { theme: settings.theme || null });
   }
 
+  if (req.method === 'GET' && pathname === '/api/albums') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const settings = readSettings();
+    return json(res, 200, { albums: listAlbums(settings).map((album) => publicAlbum(album)) });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/albums') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 64 * 1024);
+    const settings = readSettings();
+    const album = createAlbumRecord(body, settings);
+    settings.albums = ensureAlbums(settings);
+    settings.albums.unshift(album);
+    settings.updatedAt = new Date().toISOString();
+    writeSettings(settings);
+    db.addEvent('album.created', { actor: auth.actor, albumId: album.id, name: album.name });
+    return json(res, 201, { album: publicAlbum(album) });
+  }
+
   if (req.method === 'PUT' && pathname === '/api/settings/theme') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
@@ -116,10 +137,22 @@ async function route(req, res) {
     const visibility = url.searchParams.get('visibility') || '';
     const source = url.searchParams.get('source') || '';
     const tag = url.searchParams.get('tag') || '';
+    const albumId = url.searchParams.get('albumId') || '';
     const q = url.searchParams.get('q') || '';
     const sort = url.searchParams.get('sort') || 'newest';
+    const settings = readSettings();
+    const album = albumId ? findAlbum(settings, albumId) : null;
+    const imageIds = album ? new Set((album.imageIds || []).map(String)) : null;
+    const all = db.listImages({ limit: Number.MAX_SAFE_INTEGER, offset: 0, includePrivate: admin, visibility, source, tag, q, sort })
+      .filter((image) => !image.deletedAt)
+      .filter((image) => !imageIds || imageIds.has(String(image.id)));
+    const page = all.slice(offset, offset + limit);
     return json(res, 200, {
-      images: db.listImages({ limit, offset, includePrivate: admin, visibility, source, tag, q, sort }).map(publicImage)
+      images: page.map(publicImage),
+      total: all.length,
+      limit,
+      offset,
+      hasMore: offset + limit < all.length
     });
   }
 
@@ -143,6 +176,22 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const limit = clamp(Number(url.searchParams.get('limit') || 20), 1, 100);
     return json(res, 200, { events: db.listEvents({ limit }) });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/trash') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const settings = readSettings();
+    const limit = clamp(Number(url.searchParams.get('limit') || 30), 1, 200);
+    const offset = clamp(Number(url.searchParams.get('offset') || 0), 0, Number.MAX_SAFE_INTEGER);
+    const recycleBin = ensureRecycleBin(settings);
+    return json(res, 200, {
+      items: recycleBin.slice(offset, offset + limit).map(publicTrashItem),
+      total: recycleBin.length,
+      limit,
+      offset,
+      hasMore: offset + limit < recycleBin.length
+    });
   }
 
   if (req.method === 'GET' && /^\/api\/images\/[^/]+$/.test(pathname)) {
@@ -175,7 +224,7 @@ async function route(req, res) {
     const id = pathname.split('/')[3];
     const image = db.deleteImage(id);
     if (!image) return json(res, 404, { error: 'Image not found' });
-    await storage.delete(image);
+    moveImageToRecycleBin(image, auth.actor);
     return json(res, 200, { ok: true });
   }
 
@@ -189,7 +238,7 @@ async function route(req, res) {
     for (const id of ids) {
       const image = db.deleteImage(String(id));
       if (image) {
-        await storage.delete(image);
+        moveImageToRecycleBin(image, auth.actor);
         deleted.push(id);
       } else {
         missing.push(id);
@@ -217,6 +266,22 @@ async function route(req, res) {
       }
     }
     return json(res, 200, { ok: true, updated, missing });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/images/download') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const body = await parseJsonBody(req, 256 * 1024);
+    const ids = Array.isArray(body.ids) ? body.ids.slice(0, 100) : [];
+    const images = ids.map((id) => db.getImage(String(id))).filter(Boolean);
+    if (!images.length) return json(res, 400, { error: 'No images selected' });
+    const archive = await createImageZip(images);
+    res.writeHead(200, {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="telepic-export-${Date.now()}.zip"`,
+      'content-length': archive.length
+    });
+    return res.end(archive);
   }
 
   if (req.method === 'GET' && pathname === '/api/config') {
@@ -260,6 +325,13 @@ async function route(req, res) {
       s3PublicBaseUrl: config.s3PublicBaseUrl || '',
       maxUploadBytes: config.maxUploadBytes
     });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/integrations/telegram/status') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const status = await telegramStatusPayload();
+    return json(res, 200, status);
   }
 
   if (req.method === 'PUT' && pathname === '/api/integrations/telegram') {
@@ -330,6 +402,12 @@ async function route(req, res) {
     return json(res, 200, { ok: true, storageDriver: config.storageDriver, s3Configured: Boolean(config.s3Bucket && config.s3AccessKeyId && config.s3SecretAccessKey) });
   }
 
+  if (req.method === 'GET' && pathname === '/api/integrations/storage/status') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    return json(res, 200, await storageStatusPayload());
+  }
+
   if (req.method === 'GET' && pathname === '/api/tokens') {
     if (!requireAdmin(req, config)) return json(res, 401, { error: 'Admin token required' });
     return json(res, 200, { tokens: db.listTokens() });
@@ -347,6 +425,86 @@ async function route(req, res) {
     const token = db.deleteToken(pathname.split('/')[3]);
     if (!token) return json(res, 404, { error: 'Token not found' });
     return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/albums\/[^/]+$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const albumId = pathname.split('/')[3];
+    const body = await parseJsonBody(req, 64 * 1024);
+    const settings = readSettings();
+    const album = findAlbum(settings, albumId);
+    if (!album) return json(res, 404, { error: 'Album not found' });
+    if (typeof body.name === 'string' && body.name.trim()) album.name = body.name.trim().slice(0, 80);
+    if (typeof body.description === 'string') album.description = body.description.trim().slice(0, 300);
+    if (typeof body.coverImageId === 'string') album.coverImageId = body.coverImageId.trim();
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(settings);
+    db.addEvent('album.updated', { actor: auth.actor, albumId: album.id });
+    return json(res, 200, { album: publicAlbum(album) });
+  }
+
+  if (req.method === 'DELETE' && /^\/api\/albums\/[^/]+$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const albumId = pathname.split('/')[3];
+    const settings = readSettings();
+    const before = ensureAlbums(settings).length;
+    settings.albums = ensureAlbums(settings).filter((album) => String(album.id) !== String(albumId));
+    if (settings.albums.length === before) return json(res, 404, { error: 'Album not found' });
+    settings.updatedAt = new Date().toISOString();
+    writeSettings(settings);
+    db.addEvent('album.deleted', { actor: auth.actor, albumId });
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && /^\/api\/albums\/[^/]+\/images$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const albumId = pathname.split('/')[3];
+    const body = await parseJsonBody(req, 256 * 1024);
+    const settings = readSettings();
+    const album = findAlbum(settings, albumId);
+    if (!album) return json(res, 404, { error: 'Album not found' });
+    const ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 200) : [];
+    album.imageIds = [...new Set([...(album.imageIds || []), ...ids])];
+    if (!album.coverImageId && ids.length) album.coverImageId = ids[0];
+    album.updatedAt = new Date().toISOString();
+    settings.updatedAt = album.updatedAt;
+    writeSettings(settings);
+    db.addEvent('album.images_added', { actor: auth.actor, albumId, count: ids.length });
+    return json(res, 200, { album: publicAlbum(album) });
+  }
+
+  if (req.method === 'POST' && /^\/api\/trash\/[^/]+\/restore$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const item = restoreTrashItem(pathname.split('/')[3], auth.actor);
+    if (!item) return json(res, 404, { error: 'Recycle bin item not found' });
+    return json(res, 200, { ok: true, image: publicImage(item) });
+  }
+
+  if (req.method === 'DELETE' && /^\/api\/trash\/[^/]+$/.test(pathname)) {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const item = await permanentlyDeleteTrashItem(pathname.split('/')[3], auth.actor);
+    if (!item) return json(res, 404, { error: 'Recycle bin item not found' });
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/trash/empty') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const settings = readSettings();
+    const items = ensureRecycleBin(settings);
+    for (const item of items) await storage.delete(item);
+    removeImagesFromAlbums(settings, items.map((item) => item.id));
+    settings.recycleBin = [];
+    settings.updatedAt = new Date().toISOString();
+    writeSettings(settings);
+    db.addEvent('trash.emptied', { actor: auth.actor, count: items.length });
+    return json(res, 200, { ok: true, removed: items.length });
   }
 
   if (req.method === 'POST' && pathname === `/telegram/${config.telegramWebhookSecret}`) {
@@ -540,6 +698,291 @@ function clamp(value, min, max) {
 function normalizeTags(input) {
   const list = Array.isArray(input) ? input : String(input || '').split(',');
   return [...new Set(list.map((item) => String(item).trim()).filter(Boolean).slice(0, 20))];
+}
+
+function ensureAlbums(settings) {
+  settings.albums ||= [];
+  return settings.albums;
+}
+
+function ensureRecycleBin(settings) {
+  settings.recycleBin ||= [];
+  return settings.recycleBin;
+}
+
+function listAlbums(settings) {
+  return ensureAlbums(settings).map((album) => {
+    const imageIds = Array.isArray(album.imageIds) ? album.imageIds.map(String) : [];
+    const coverImage = album.coverImageId ? db.getImage(album.coverImageId) : db.getImage(imageIds[0] || '');
+    const activeImageIds = imageIds.filter((id) => db.getImage(id));
+    return {
+      ...album,
+      imageIds: activeImageIds,
+      imageCount: activeImageIds.length,
+      coverImageId: album.coverImageId || (activeImageIds[0] || ''),
+      coverImage
+    };
+  });
+}
+
+function publicAlbum(album) {
+  return {
+    id: album.id,
+    name: album.name,
+    description: album.description || '',
+    coverImageId: album.coverImageId || '',
+    imageIds: album.imageIds || [],
+    imageCount: typeof album.imageCount === 'number' ? album.imageCount : (album.imageIds || []).length,
+    coverImage: album.coverImage ? publicImage(album.coverImage) : null,
+    createdAt: album.createdAt,
+    updatedAt: album.updatedAt
+  };
+}
+
+function findAlbum(settings, id) {
+  return ensureAlbums(settings).find((album) => String(album.id) === String(id));
+}
+
+function createAlbumRecord(body, settings) {
+  const name = String(body && body.name || '').trim().slice(0, 80);
+  if (!name) {
+    const error = new Error('Album name is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (ensureAlbums(settings).some((album) => album.name === name)) {
+    const error = new Error('Album name already exists');
+    error.statusCode = 409;
+    throw error;
+  }
+  const nowIso = new Date().toISOString();
+  return {
+    id: `alb_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    description: String(body && body.description || '').trim().slice(0, 300),
+    coverImageId: String(body && body.coverImageId || '').trim(),
+    imageIds: Array.isArray(body && body.imageIds) ? body.imageIds.map(String).slice(0, 2000) : [],
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+}
+
+function moveImageToRecycleBin(image, actor) {
+  const settings = readSettings();
+  const recycleBin = ensureRecycleBin(settings);
+  recycleBin.unshift({
+    ...image,
+    deletedAt: new Date().toISOString(),
+    deletedBy: actor || 'admin'
+  });
+  settings.updatedAt = new Date().toISOString();
+  writeSettings(settings);
+  db.addEvent('image.trashed', { actor, id: image.id });
+}
+
+function publicTrashItem(item) {
+  return {
+    id: item.id,
+    originalName: item.originalName,
+    mime: item.mime,
+    size: item.size,
+    owner: item.owner,
+    source: item.source,
+    deletedAt: item.deletedAt,
+    deletedBy: item.deletedBy,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt
+  };
+}
+
+function restoreTrashItem(id, actor) {
+  const settings = readSettings();
+  const recycleBin = ensureRecycleBin(settings);
+  const index = recycleBin.findIndex((item) => String(item.id) === String(id));
+  if (index === -1) return null;
+  const [item] = recycleBin.splice(index, 1);
+  delete item.deletedAt;
+  delete item.deletedBy;
+  db.addImage(item);
+  settings.updatedAt = new Date().toISOString();
+  writeSettings(settings);
+  db.addEvent('image.restored', { actor, id: item.id });
+  return item;
+}
+
+async function permanentlyDeleteTrashItem(id, actor) {
+  const settings = readSettings();
+  const recycleBin = ensureRecycleBin(settings);
+  const index = recycleBin.findIndex((item) => String(item.id) === String(id));
+  if (index === -1) return null;
+  const [item] = recycleBin.splice(index, 1);
+  await storage.delete(item);
+  removeImagesFromAlbums(settings, [item.id]);
+  settings.updatedAt = new Date().toISOString();
+  writeSettings(settings);
+  db.addEvent('image.purged', { actor, id: item.id });
+  return item;
+}
+
+function removeImagesFromAlbums(settings, ids) {
+  const removal = new Set(ids.map(String));
+  for (const album of ensureAlbums(settings)) {
+    album.imageIds = (album.imageIds || []).filter((id) => !removal.has(String(id)));
+    if (album.coverImageId && removal.has(String(album.coverImageId))) {
+      album.coverImageId = album.imageIds[0] || '';
+    }
+    album.updatedAt = new Date().toISOString();
+  }
+}
+
+async function telegramStatusPayload() {
+  const payload = {
+    ok: true,
+    enabled: Boolean(config.telegramBotToken),
+    publicUrl: config.publicUrl,
+    webhookUrl: `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`,
+    allowedUserIds: config.telegramAllowedUserIds,
+    recentEvents: db.listEvents({ limit: 20 }).filter((event) => String(event.type).includes('telegram')).slice(0, 10),
+    bot: null,
+    webhook: null,
+    error: ''
+  };
+  if (!config.telegramBotToken) return payload;
+  try {
+    payload.bot = await telegramApi(config, 'getMe', {});
+    payload.webhook = await telegramApi(config, 'getWebhookInfo', {});
+  } catch (error) {
+    payload.error = error.message;
+  }
+  return payload;
+}
+
+async function storageStatusPayload() {
+  const status = {
+    ok: true,
+    driver: config.storageDriver,
+    bucket: config.s3Bucket || '',
+    endpoint: config.s3Endpoint || '',
+    region: config.s3Region || '',
+    prefix: config.s3Prefix || '',
+    publicBaseUrl: config.s3PublicBaseUrl || '',
+    forcePathStyle: Boolean(config.s3ForcePathStyle),
+    imageCount: db.stats().images,
+    recycleCount: ensureRecycleBin(readSettings()).length,
+    testWrite: false,
+    testRead: false,
+    message: ''
+  };
+  try {
+    storage.ensure();
+    status.testWrite = true;
+    if (config.storageDriver === 'local') {
+      status.message = `本地目录：${config.uploadDir}`;
+      status.testRead = fs.existsSync(config.uploadDir);
+    } else {
+      const probeBuffer = Buffer.from(`telepic-probe-${Date.now()}`, 'utf8');
+      const probe = await storage.saveImage({
+        buffer: probeBuffer,
+        mime: 'text/plain',
+        originalName: 'probe.txt',
+        source: 'system',
+        owner: 'system'
+      });
+      const probeRead = await storage.read(probe);
+      status.testRead = Buffer.compare(probeRead.buffer, probeBuffer) === 0;
+      await storage.delete(probe);
+      status.message = status.testRead ? '对象存储读写测试通过' : '对象存储读写结果不一致';
+    }
+  } catch (error) {
+    status.ok = false;
+    status.message = error.message;
+  }
+  return status;
+}
+
+async function createImageZip(images) {
+  const files = [];
+  for (const image of images) {
+    const stored = await storage.read(image);
+    files.push({
+      name: safeArchiveName(image.originalName || image.fileName || `${image.id}.bin`, image.id),
+      data: stored.buffer
+    });
+  }
+  return createZipArchive(files);
+}
+
+function safeArchiveName(name, fallbackId) {
+  const base = String(name || `${fallbackId}.bin`).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 180);
+  return base || `${fallbackId}.bin`;
+}
+
+function createZipArchive(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name, 'utf8');
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data || '');
+    const crc = crc32(data);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(crc >>> 0, 14);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, name, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc >>> 0, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += localHeader.length + name.length + data.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i += 1) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function updateEnvValue(filePath, key, value) {

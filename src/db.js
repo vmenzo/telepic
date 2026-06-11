@@ -160,6 +160,7 @@ class SqliteDb {
         id TEXT PRIMARY KEY,
         file_name TEXT,
         storage_key TEXT,
+        storage_driver TEXT NOT NULL DEFAULT 'local',
         original_name TEXT,
         mime TEXT NOT NULL,
         size INTEGER NOT NULL DEFAULT 0,
@@ -194,6 +195,12 @@ class SqliteDb {
       );
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
     `);
+    this.ensureColumn('images', 'storage_driver', "TEXT NOT NULL DEFAULT 'local'");
+  }
+
+  ensureColumn(table, column, definition) {
+    const exists = this.db.prepare(`PRAGMA table_info(${table})`).all().some((item) => item.name === column);
+    if (!exists) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   importJsonIfNeeded() {
@@ -206,8 +213,8 @@ class SqliteDb {
     const state = JSON.parse(raw);
     const insertImage = this.db.prepare(`
       INSERT OR IGNORE INTO images (
-        id, file_name, storage_key, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, file_name, storage_key, storage_driver, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertToken = this.db.prepare(`
       INSERT OR IGNORE INTO tokens (id, name, token_hash, scopes, created_at, last_used_at)
@@ -237,8 +244,8 @@ class SqliteDb {
   addImage(image) {
     this.db.prepare(`
       INSERT INTO images (
-        id, file_name, storage_key, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, file_name, storage_key, storage_driver, original_name, mime, size, sha256, source, owner, tags, visibility, created_at, updated_at, url, raw_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(...imageValues(image));
     this.addEvent('image.created', { id: image.id, source: image.source });
     return image;
@@ -260,12 +267,13 @@ class SqliteDb {
     const updated = { ...image, ...patch, updatedAt: now() };
     this.db.prepare(`
       UPDATE images SET
-        file_name = ?, storage_key = ?, original_name = ?, mime = ?, size = ?, sha256 = ?, source = ?, owner = ?,
+        file_name = ?, storage_key = ?, storage_driver = ?, original_name = ?, mime = ?, size = ?, sha256 = ?, source = ?, owner = ?,
         tags = ?, visibility = ?, created_at = ?, updated_at = ?, url = ?, raw_url = ?
       WHERE id = ?
     `).run(
       updated.fileName || null,
       updated.storageKey || null,
+      updated.storageDriver || 'local',
       updated.originalName || null,
       updated.mime,
       updated.size || 0,
@@ -361,6 +369,7 @@ function imageValues(image) {
     image.id,
     image.fileName || null,
     image.storageKey || image.fileName || null,
+    image.storageDriver || 'local',
     image.originalName || image.fileName || image.id,
     image.mime,
     image.size || 0,
@@ -381,6 +390,7 @@ function rowToImage(row) {
     id: row.id,
     fileName: row.file_name,
     storageKey: row.storage_key,
+    storageDriver: row.storage_driver || 'local',
     originalName: row.original_name,
     mime: row.mime,
     size: Number(row.size || 0),

@@ -157,6 +157,16 @@ env_set() {
   fi
 }
 
+env_value_file() {
+  FILE_PATH="$1"
+  KEY="$2"
+  if [ ! -f "$FILE_PATH" ]; then
+    echo ""
+    return
+  fi
+  grep "^${KEY}=" "$FILE_PATH" | tail -n 1 | cut -d= -f2- || true
+}
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root, for example: sudo sh scripts/install.sh"
   exit 1
@@ -165,7 +175,12 @@ fi
 APP_DIR="$(prompt_value "Install directory" "$APP_DIR")"
 PORT="$(prompt_value "HTTP port" "$PORT")"
 if [ -z "$PUBLIC_URL" ]; then
-  PUBLIC_URL="$(prompt_value "Public URL" "$(default_public_url)")"
+  EXISTING_PUBLIC_URL="$(env_value_file "${APP_DIR}/.env" "PUBLIC_URL")"
+  if [ -n "$EXISTING_PUBLIC_URL" ]; then
+    PUBLIC_URL="$(prompt_value "Public URL" "$EXISTING_PUBLIC_URL")"
+  else
+    PUBLIC_URL="$(prompt_value "Public URL" "$(default_public_url)")"
+  fi
 fi
 ADMIN_USERNAME="$(prompt_value "Admin username" "$ADMIN_USERNAME")"
 
@@ -242,6 +257,13 @@ fi
 
 echo "==> Starting Docker service"
 compose_up
+
+if [ -n "$(env_value_file .env TELEGRAM_BOT_TOKEN)" ]; then
+  echo "==> Registering Telegram webhook and command menu"
+  if ! $COMPOSE exec -T telepic node scripts/set-telegram-webhook.js; then
+    echo "Telegram webhook registration failed. Check PUBLIC_URL, TELEGRAM_BOT_TOKEN, and TELEGRAM_WEBHOOK_SECRET in ${APP_DIR}/.env."
+  fi
+fi
 
 if ! service_ready; then
   echo ""

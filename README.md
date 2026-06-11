@@ -85,6 +85,8 @@ curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install
 /opt/telepic/.env
 ```
 
+通过 Web 面板保存的 Telegram、对象存储、管理员密码等配置会写回这个文件。Docker 部署会把 `.env` 挂载进容器，更新或重建容器后配置仍会保留。
+
 常见后续操作：
 
 ```bash
@@ -149,6 +151,8 @@ curl -fsSL https://raw.githubusercontent.com/vmenzo/telepic/main/scripts/install
 cd /opt/telepic
 sh scripts/update.sh
 ```
+
+更新脚本会保留 `/opt/telepic/.env`，不会要求重新配置 Telegram。检测到 `TELEGRAM_BOT_TOKEN` 时会自动重新注册 webhook 和 Bot 菜单命令；只有更换域名、Bot token 或 webhook secret 时才需要重新确认配置。
 
 常用命令：
 

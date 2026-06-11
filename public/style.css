@@ -172,6 +172,7 @@ a {
   top: 0;
   height: 100vh;
   overflow: auto;
+  overflow-x: hidden;
   padding: 22px 18px;
   border-right: 1px solid var(--line);
   border-top: 3px solid var(--accent);
@@ -713,12 +714,27 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .compact-actions,
 .theme-shop-actions,
 .theme-transfer-row {
   flex-wrap: wrap;
+}
+
+.theme-shop-toolbar .compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.theme-shop-toolbar .compact-actions > * {
+  flex: 0 0 auto;
 }
 
 .theme-showcase {
@@ -759,7 +775,7 @@ a {
 .theme-store-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
+  gap: 12px;
   max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;
@@ -792,7 +808,7 @@ a {
 .theme-card {
   width: 100%;
   min-height: 0;
-  padding: 9px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 74%, var(--panel));
@@ -889,9 +905,10 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .theme-card-actions small {
@@ -906,8 +923,9 @@ a {
   display: inline-flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .theme-card-actions button {
@@ -1241,6 +1259,7 @@ a {
 .api-panel,
 .integration-panel {
   gap: 14px;
+  min-width: 0;
 }
 
 .password-panel,
@@ -1667,6 +1686,23 @@ a {
   .theme-showcase,
   .theme-card-main {
     grid-template-columns: 1fr;
+  }
+
+  .theme-shop-toolbar,
+  .theme-transfer-row,
+  .theme-shop-actions {
+    align-items: stretch;
+  }
+
+  .theme-shop-toolbar .compact-actions,
+  .theme-card-buttons {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .theme-shop-toolbar .compact-actions > *,
+  .theme-card-buttons > * {
+    flex: 1 1 auto;
   }
 
   .theme-store-grid {

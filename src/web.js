@@ -77,25 +77,17 @@ function htmlPage(config) {
   <link rel="stylesheet" href="/assets/style.css?v=${assetVersion}">
 </head>
 <body class="app-body">
-  <div id="loginOverlay" class="auth-stage">
-    <section class="auth-copy">
-      <div class="ops-brand oversized"><span>TP</span></div>
-      <p class="eyebrow">Self-hosted media operations</p>
-      <h1>Telepic Command Center</h1>
-      <p>把上传、检索、相册、对象存储和 Telegram Bot 管理收进一个全新的媒体工作台。</p>
-      <div class="auth-signal-grid">
-        <span>Local-first</span>
-        <span>S3 Ready</span>
-        <span>Bot Ops</span>
-      </div>
-    </section>
-    <section class="auth-card">
-      <div>
-        <p class="eyebrow">Admin Login</p>
-        <h2>进入控制台</h2>
+  <div id="loginOverlay" class="login-overlay">
+    <section class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">TP</div>
+        <div>
+          <p class="eyebrow">Admin Login</p>
+          <h1>Telepic 管理员登录</h1>
+        </div>
       </div>
       <label class="field-stack">
-        <span>管理员账号</span>
+        <span>管理员 Token</span>
         <input id="loginUsername" type="text" autocomplete="username" placeholder="用户名">
       </label>
       <label class="field-stack">
@@ -105,143 +97,619 @@ function htmlPage(config) {
       <div class="login-actions single">
         <button id="loginButton" type="button">进入控制台</button>
       </div>
-      <p id="loginMessage" class="mini-note">请使用管理员账号和密码登录。</p>
+      <p id="loginMessage" class="mini-note">登录后会保存在当前浏览器，可随时退出或切换。</p>
     </section>
   </div>
 
-  <div class="ops-shell">
-    <aside class="ops-rail" aria-label="主导航">
-      <div class="ops-brand"><span>TP</span></div>
-      <nav id="mainNav" class="main-nav">
-        <button type="button" class="main-nav-button is-active" data-main-view="overview"><span>Overview</span><strong>概览</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="library"><span>Library</span><strong>图片</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="albums"><span>Albums</span><strong>相册</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="bot"><span>Bot</span><strong>机器人</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="storage"><span>Storage</span><strong>存储</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="trash"><span>Trash</span><strong>回收站</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="system"><span>System</span><strong>系统</strong></button>
-        <button type="button" class="main-nav-button" data-main-view="theme"><span>Theme</span><strong>外观</strong></button>
-      </nav>
-      <div class="rail-status">
-        <span class="status-dot"></span>
-        <span>Live</span>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark">TP</div>
+        <div class="brand-copy">
+          <p class="eyebrow">Image Hosting</p>
+          <h1>Telepic 图床</h1>
+          <p class="brand-text">自托管图片资产库与 Telegram 管理台</p>
+        </div>
       </div>
+
+      <section class="side-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-kicker">上传入口</p>
+            <h2>快速入库</h2>
+          </div>
+          <span id="uploadAuthBadge" class="badge">文件 / URL</span>
+        </div>
+        <div id="uploadGateHint" class="notice-box"></div>
+        <label class="dropzone" id="dropzone">
+          <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple>
+          <span class="dropzone-title">点击或拖拽上传图片</span>
+          <span class="dropzone-sub">支持多文件、粘贴上传、截图直传</span>
+        </label>
+        <label class="upload-target">
+          <span>本次上传位置</span>
+          <select id="uploadStorageDriver">
+            <option value="default">跟随当前配置</option>
+            <option value="local">本地存储</option>
+            <option value="s3">对象存储</option>
+          </select>
+        </label>
+        <div class="inline-form">
+          <input id="fetchUrlInput" class="wide-input" placeholder="粘贴图片 URL 后抓取">
+          <button id="fetchUrlButton">抓取</button>
+        </div>
+        <div id="fetchUrlResult" class="result-box"></div>
+        <div id="uploadResult" class="result-box result-log"></div>
+      </section>
+
+      <section class="side-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-kicker">Bot 联动</p>
+            <h2>Telegram 控制台</h2>
+          </div>
+          <span id="telegramBadge" class="badge">检测中</span>
+        </div>
+        <p id="telegramHint" class="hint"></p>
+        <div class="command-list">
+          <code>/start</code>
+          <code>/panel</code>
+          <code>/stats</code>
+          <code>/system</code>
+          <code>/storage</code>
+          <code>/register</code>
+        </div>
+        <pre id="telegramWebhook" class="mono-box"></pre>
+      </section>
+
     </aside>
 
-    <header class="ops-commandbar">
-      <div class="command-title">
-        <p class="eyebrow">Media Operations Desk</p>
-        <h1>Telepic 图床工作台</h1>
-      </div>
-      <label class="global-search">
-        <span>Search</span>
-        <input id="searchInput" placeholder="搜索文件名、ID、来源">
-      </label>
-    </header>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-copy">
+          <p class="eyebrow">运营后台</p>
+          <h2>图片资产控制台</h2>
+          <p class="topbar-text">统一管理上传、权限、标签、对象存储和 Telegram 机器人操作。</p>
+        </div>
+        <div class="topbar-tools">
+          <div class="service-chip">
+            <span class="status-dot"></span>
+            <span>本地服务在线</span>
+          </div>
+          <div class="token-box">
+            <input id="adminToken" type="password" placeholder="API 管理密钥 / 会话 Token">
+            <button id="saveToken">切换</button>
+            <button id="logoutToken" class="secondary">退出</button>
+          </div>
+          <div id="adminState" class="mini-note">未保存管理员密钥</div>
+          <div id="runtimeStatus" class="mini-note">前端脚本加载中</div>
+        </div>
+      </header>
 
-    <main class="ops-main">
       <div id="flashMessage" class="flash-bar">准备就绪</div>
 
-      <section id="view-overview" class="main-view is-active workspace-view overview-workspace">
-        <section class="overview-hero ops-panel">
-          <div>
-            <p class="panel-kicker">Overview</p>
-            <h2>站点概览</h2>
-            <p class="section-text">统计、来源、运行状态和内容结构集中在这里；切换到图片/相册/系统时不再占用页面。</p>
+      <nav id="mainNav" class="main-nav" aria-label="主功能导航">
+        <button type="button" class="main-nav-button is-active" data-main-view="library">图片</button>
+        <button type="button" class="main-nav-button" data-main-view="albums">相册</button>
+        <button type="button" class="main-nav-button" data-main-view="bot">Bot 配置</button>
+        <button type="button" class="main-nav-button" data-main-view="storage">存储桶</button>
+        <button type="button" class="main-nav-button" data-main-view="trash">回收站</button>
+        <button type="button" class="main-nav-button" data-main-view="system">系统</button>
+      </nav>
+
+      <section class="overview-strip">
+        <article class="metric-card">
+          <small>图片总数</small>
+          <strong id="statImages">0</strong>
+        </article>
+        <article class="metric-card">
+          <small>公开图片</small>
+          <strong id="statPublic">0</strong>
+        </article>
+        <article class="metric-card">
+          <small>私有图片</small>
+          <strong id="statPrivate">0</strong>
+        </article>
+        <article class="metric-card">
+          <small>占用空间</small>
+          <strong id="statBytes">0 B</strong>
+        </article>
+        <article class="metric-card">
+          <small>API 密钥</small>
+          <strong id="statTokens">0</strong>
+        </article>
+        <article class="metric-card">
+          <small>Telegram</small>
+          <strong id="statTelegram">未启用</strong>
+        </article>
+        <article class="metric-card">
+          <small>数据库</small>
+          <strong id="statDatabase">检测中</strong>
+        </article>
+        <article class="metric-card">
+          <small>存储</small>
+          <strong id="statStorage">检测中</strong>
+        </article>
+      </section>
+
+      <section class="dashboard-grid">
+        <article class="dashboard-panel dashboard-panel-accent">
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">可见性分布</p>
+              <h2>公开 / 私有</h2>
+            </div>
           </div>
-        </section>
-        <section class="ops-overview">
-          <article class="metric-card"><small>图片总数</small><strong id="statImages">0</strong></article>
-          <article class="metric-card"><small>公开图片</small><strong id="statPublic">0</strong></article>
-          <article class="metric-card"><small>私有图片</small><strong id="statPrivate">0</strong></article>
-          <article class="metric-card"><small>占用空间</small><strong id="statBytes">0 B</strong></article>
-          <article class="metric-card"><small>API 密钥</small><strong id="statTokens">0</strong></article>
-          <article class="metric-card"><small>Telegram</small><strong id="statTelegram">未启用</strong></article>
-          <article class="metric-card"><small>数据库</small><strong id="statDatabase">检测中</strong></article>
-          <article class="metric-card"><small>存储</small><strong id="statStorage">检测中</strong></article>
-        </section>
-        <section class="ops-intel-grid">
-          <article class="ops-panel visibility-panel">
-            <div class="panel-head compact"><div><p class="panel-kicker">Visibility</p><h2>公开率</h2></div></div>
-            <div class="ring-layout"><div id="visibilityChart" class="ring-chart"><div class="ring-center"><strong id="visibilityRate">0%</strong><span>公开</span></div></div><div id="visibilityLegend" class="chart-legend"></div></div>
-          </article>
-          <article class="ops-panel"><div class="panel-head compact"><div><p class="panel-kicker">Sources</p><h2>上传来源</h2></div></div><div id="sourceChart" class="source-chart"></div></article>
-          <article class="ops-panel"><div class="panel-head compact"><div><p class="panel-kicker">Runtime</p><h2>服务状态</h2></div></div><div id="statusOverview" class="status-overview"></div></article>
-          <article class="ops-panel"><div class="panel-head compact"><div><p class="panel-kicker">Content</p><h2>内容结构</h2></div></div><div id="breakdownCharts" class="breakdown-list"></div></article>
+          <div class="ring-layout">
+            <div id="visibilityChart" class="ring-chart">
+              <div class="ring-center">
+                <strong id="visibilityRate">0%</strong>
+                <span>公开率</span>
+              </div>
+            </div>
+            <div id="visibilityLegend" class="chart-legend"></div>
+          </div>
+        </article>
+
+        <article class="dashboard-panel">
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">来源统计</p>
+              <h2>上传来源结构</h2>
+            </div>
+          </div>
+          <div id="sourceChart" class="source-chart"></div>
+        </article>
+
+        <article class="dashboard-panel">
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">运行状态</p>
+              <h2>服务概览</h2>
+            </div>
+          </div>
+          <div id="statusOverview" class="status-overview"></div>
+        </article>
+
+        <article class="dashboard-panel">
+          <div class="panel-head compact">
+            <div>
+              <p class="panel-kicker">内容结构</p>
+              <h2>类型 / 标签</h2>
+            </div>
+          </div>
+          <div id="breakdownCharts" class="breakdown-list"></div>
+        </article>
+      </section>
+
+      <section id="view-albums" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Albums</p>
+              <h2>相册管理</h2>
+              <p class="section-text">独立相册模块，支持创建相册、加入已选图片、设置封面、编辑描述和按相册筛选图片。</p>
+            </div>
+            <div class="actions">
+              <input id="albumNameInput" class="wide-input" placeholder="新相册名称">
+              <button id="createAlbum" type="button">创建相册</button>
+            </div>
+          </div>
+          <div class="selection-bar">
+            <div class="selection-copy">
+              <strong id="albumSelectionSummary">未选择图片</strong>
+              <span class="muted-text">先在图片页勾选图片，再回到这里加入相册。</span>
+            </div>
+            <div class="actions">
+              <button id="assignSelectedAlbum" class="secondary" type="button">把已选图片加入相册</button>
+              <button id="clearAlbumFilter" class="secondary" type="button">清除相册筛选</button>
+            </div>
+          </div>
+          <div id="albumResult" class="result-box"></div>
+          <div id="albumGrid" class="album-grid"></div>
+          <section class="album-editor">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">Album Detail</p>
+                <h2>相册详情</h2>
+              </div>
+              <span id="albumDetailBadge" class="badge">未选择</span>
+            </div>
+            <div class="integration-grid">
+              <label class="field-stack">
+                <span>相册名称</span>
+                <input id="albumEditName" placeholder="相册名称">
+              </label>
+              <label class="field-stack">
+                <span>相册描述</span>
+                <input id="albumEditDescription" placeholder="相册描述">
+              </label>
+              <label class="field-stack">
+                <span>排序方式</span>
+                <select id="albumSortMode">
+                  <option value="manual">手动排序</option>
+                  <option value="newest">最新优先</option>
+                  <option value="oldest">最早优先</option>
+                  <option value="name">按名称</option>
+                </select>
+              </label>
+            </div>
+            <div class="actions actions-split">
+              <button id="saveAlbumMeta" class="secondary" type="button">保存相册信息</button>
+              <button id="setAlbumCoverFromCurrent" class="secondary" type="button">当前图片设为封面</button>
+              <button id="removeCurrentFromAlbum" class="secondary" type="button">移出当前图片</button>
+              <button id="moveCurrentAlbumUp" class="secondary" type="button">当前图片上移</button>
+              <button id="moveCurrentAlbumDown" class="secondary" type="button">当前图片下移</button>
+              <button id="deleteAlbum" class="danger" type="button">删除相册</button>
+            </div>
+            <div id="albumDetailResult" class="result-box"></div>
+          </section>
         </section>
       </section>
 
-      <section id="view-library" class="main-view workspace-view library-workspace">
-        <section class="intake-deck">
-          <div class="intake-copy">
-            <p class="panel-kicker">Intake</p>
-            <h2>快速入库</h2>
-            <p class="section-text">拖拽、粘贴、文件选择或 URL 抓图，把素材直接送进媒体库。</p>
-            <div class="intake-badges"><span id="uploadAuthBadge" class="badge">文件 / URL</span><span id="uploadGateHint" class="notice-box"></span></div>
+      <section id="view-bot" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Telegram Bot</p>
+              <h2>Bot 快捷对接</h2>
+              <p class="section-text">在这里配置 Bot Token、Webhook、白名单用户，并把 Telegram 管理能力接到图床。</p>
+            </div>
           </div>
-          <label class="dropzone" id="dropzone">
-            <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple>
-            <span class="dropzone-title">Drop images here</span>
-            <span class="dropzone-sub">点击选择、多文件、截图粘贴都支持</span>
-          </label>
-          <div class="intake-controls">
-            <label class="field-stack"><span>本次上传位置</span><select id="uploadStorageDriver"><option value="default">跟随当前配置</option><option value="local">本地存储</option><option value="s3">对象存储</option></select></label>
-            <div class="inline-form"><input id="fetchUrlInput" class="wide-input" placeholder="粘贴图片 URL 后抓取"><button id="fetchUrlButton">抓取</button></div>
+          <div class="bot-console-shell">
+            <div class="bot-console-grid">
+              <div class="bot-console-main">
+                <div id="telegramStatusPanel" class="status-panel-grid bot-status-panel"></div>
+              </div>
+              <div class="bot-console-side">
+                <div id="telegramConfigMount" class="bot-config-mount"></div>
+                <div class="integration-panel bot-test-panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="panel-kicker">Telegram Test</p>
+                      <h2>测试消息</h2>
+                    </div>
+                  </div>
+                  <div class="integration-grid">
+                    <label class="field-stack">
+                      <span>测试 Chat ID</span>
+                      <input id="telegramTestChatId" placeholder="留空则默认第一个白名单用户">
+                    </label>
+                    <label class="field-stack">
+                      <span>测试内容</span>
+                      <input id="telegramTestMessage" placeholder="Telepic 测试消息">
+                    </label>
+                  </div>
+                  <div class="actions">
+                    <button id="sendTelegramTest" type="button" class="secondary">发送测试消息</button>
+                  </div>
+                  <div id="telegramTestResult" class="result-box"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div id="fetchUrlResult" class="result-box"></div>
-          <div id="uploadResult" class="result-box result-log"></div>
         </section>
+      </section>
 
-        <section class="asset-board-shell">
-          <div class="board-head">
-            <div><p class="panel-kicker">Library</p><h2>媒体资产板</h2><p id="sourceSummary" class="section-text"></p></div>
-            <div class="actions"><button id="refreshImages" class="secondary">刷新</button><button id="bulkPublic" class="secondary">批量公开</button><button id="bulkPrivate" class="secondary">批量私有</button><button id="bulkDelete" class="danger">批量删除</button></div>
+      <section id="view-storage" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Object Storage</p>
+              <h2>第三方存储桶</h2>
+              <p class="section-text">支持 S3 兼容对象存储，可对接 Cloudflare R2、MinIO、Backblaze B2、AWS S3 等常见存储桶。</p>
+            </div>
           </div>
+          <div id="storageStatusPanel" class="status-panel-grid"></div>
+          <div class="integration-panel">
+            <div class="panel-head compact">
+              <div>
+                <p class="panel-kicker">Storage Migration</p>
+                <h2>迁移已有文件</h2>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="migrateStorageData" type="button" class="secondary">迁移到当前存储配置</button>
+            </div>
+            <div id="storageMigrateResult" class="result-box"></div>
+          </div>
+          <div id="storageConfigMount"></div>
+        </section>
+      </section>
+
+      <section id="view-trash" class="main-view">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">Recycle Bin</p>
+              <h2>回收站</h2>
+              <p class="section-text">删除的图片会先进入回收站，可以恢复，也可以彻底清空。</p>
+            </div>
+            <div class="actions">
+              <button id="refreshTrash" class="secondary" type="button">刷新回收站</button>
+              <button id="emptyTrash" class="danger" type="button">清空回收站</button>
+            </div>
+          </div>
+          <div id="trashList" class="trash-list"></div>
+        </section>
+      </section>
+
+      <section class="content-grid main-view is-active" id="view-library">
+        <section class="library-shell">
+          <div class="section-head">
+            <div>
+              <p class="panel-kicker">媒体库</p>
+              <h2>图片资产列表</h2>
+              <p class="section-text">更适合长期运营的表格式视图，支持筛选、批量操作、链接复制和状态切换。</p>
+            </div>
+            <div class="actions">
+              <button id="refreshImages" class="secondary">刷新列表</button>
+              <button id="bulkPublic" class="secondary">批量公开</button>
+              <button id="bulkPrivate" class="secondary">批量私有</button>
+              <button id="bulkDelete" class="danger">批量删除</button>
+            </div>
+          </div>
+
           <div class="filter-bar">
+            <input id="searchInput" placeholder="搜索文件名、ID、来源">
             <input id="tagFilter" placeholder="按标签筛选">
-            <select id="visibilityFilter"><option value="">全部可见性</option><option value="public">公开</option><option value="private">私有</option></select>
-            <select id="sourceFilter"><option value="">全部来源</option><option value="api">网页/API</option><option value="url">URL 抓图</option><option value="telegram">Telegram</option></select>
-            <select id="sortFilter"><option value="newest">最新优先</option><option value="oldest">最早优先</option><option value="name">按名称</option><option value="size-desc">按大小降序</option><option value="size-asc">按大小升序</option></select>
-            <select id="linkFormat"><option value="page">页面链接</option><option value="raw">直链</option><option value="markdown">Markdown</option><option value="html">HTML</option><option value="bbcode">BBCode</option></select>
+            <select id="visibilityFilter">
+              <option value="">全部可见性</option>
+              <option value="public">公开</option>
+              <option value="private">私有</option>
+            </select>
+            <select id="sourceFilter">
+              <option value="">全部来源</option>
+              <option value="api">网页/API</option>
+              <option value="url">URL 抓图</option>
+              <option value="telegram">Telegram</option>
+            </select>
+            <select id="sortFilter">
+              <option value="newest">最新优先</option>
+              <option value="oldest">最早优先</option>
+              <option value="name">按名称</option>
+              <option value="size-desc">按大小降序</option>
+              <option value="size-asc">按大小升序</option>
+            </select>
+            <select id="linkFormat">
+              <option value="page">页面链接</option>
+              <option value="raw">直链</option>
+              <option value="markdown">Markdown</option>
+              <option value="html">HTML</option>
+              <option value="bbcode">BBCode</option>
+            </select>
           </div>
-          <div class="selection-dock">
-            <div><strong id="selectionSummary">未选择图片</strong><span id="batchTagBadge" class="badge">未选择</span></div>
-            <div class="actions"><button id="selectAllVisible" class="secondary">全选</button><button id="clearSelection" class="secondary">清空</button><button id="copySelectedLinks" class="secondary">复制链接</button><button id="downloadSelected" class="secondary">下载</button></div>
-            <div class="batch-row"><input id="batchTagsInput" class="wide-input" placeholder="批量标签：标签1, 标签2"><button id="applyBatchTags" class="secondary">覆盖标签</button><button id="clearBatchTags" class="secondary">清空标签</button></div>
+
+          <div class="selection-bar">
+            <div class="selection-copy">
+              <strong id="selectionSummary">未选择图片</strong>
+              <span id="sourceSummary" class="muted-text"></span>
+            </div>
+            <div class="actions">
+              <button id="selectAllVisible" class="secondary">全选当前结果</button>
+              <button id="clearSelection" class="secondary">清空选择</button>
+              <button id="copySelectedLinks" class="secondary">复制已选链接</button>
+              <button id="downloadSelected" class="secondary">下载已选</button>
+            </div>
           </div>
-          <div class="media-board" id="gallery"></div>
-          <div class="pagination-bar"><div><strong id="pageSummary">第 1 页</strong><span id="pageMeta" class="muted-text">0 / 0</span></div><div class="actions"><button id="prevPage" class="secondary" type="button">上一页</button><button id="nextPage" class="secondary" type="button">下一页</button></div></div>
+
+          <div class="batch-row">
+            <span id="batchTagBadge" class="badge">未选择</span>
+            <input id="batchTagsInput" class="wide-input" placeholder="批量标签：标签1, 标签2, 标签3">
+            <button id="applyBatchTags" class="secondary">覆盖标签</button>
+            <button id="clearBatchTags" class="secondary">清空标签</button>
+          </div>
+
+          <div class="asset-table">
+            <div class="asset-table-head">
+              <span>选择</span>
+              <span>文件</span>
+              <span>元信息</span>
+              <span>链接预览</span>
+              <span>操作</span>
+            </div>
+            <div id="gallery" class="asset-table-body"></div>
+          </div>
+          <div class="pagination-bar">
+            <div class="selection-copy">
+              <strong id="pageSummary">第 1 页</strong>
+              <span id="pageMeta" class="muted-text">0 / 0</span>
+            </div>
+            <div class="actions">
+              <button id="prevPage" class="secondary" type="button">上一页</button>
+              <button id="nextPage" class="secondary" type="button">下一页</button>
+            </div>
+          </div>
         </section>
+
+        <aside class="inspector-shell">
+          <div id="inspectorTabs" class="inspector-tabs">
+            <button class="tab-button is-active" data-pane="detail">详情</button>
+            <button class="tab-button" data-pane="system">系统</button>
+            <button class="tab-button" data-pane="events">日志</button>
+            <button class="tab-button" data-pane="tokens">密钥</button>
+          </div>
+
+          <section id="pane-detail" class="inspector-pane is-active">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">检查器</p>
+                <h2>图片详情</h2>
+              </div>
+              <span id="detailBadge" class="badge">未选中</span>
+            </div>
+            <div id="imageDetail" class="detail-panel">
+              <p class="empty-state">点击列表中的任意图片，在这里查看预览、编辑名称和标签、复制不同格式的链接。</p>
+            </div>
+          </section>
+
+          <section id="pane-system" class="inspector-pane">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">环境信息</p>
+                <h2>系统配置</h2>
+              </div>
+              <span id="storageBadge" class="badge">检测中</span>
+            </div>
+            <div id="systemConfig" class="config-list"></div>
+            <div id="telegramConfigPanel" class="integration-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">Telegram Bot</p>
+                  <h2>快捷对接</h2>
+                </div>
+                <span id="telegramConfigBadge" class="badge">未配置</span>
+              </div>
+              <div class="integration-grid">
+                <label class="field-stack">
+                  <span>公网地址 PUBLIC_URL</span>
+                  <input id="cfgPublicUrl" placeholder="https://img.example.com">
+                </label>
+                <label class="field-stack">
+                  <span>Bot Token</span>
+                  <input id="cfgTelegramBotToken" type="password" placeholder="123456:ABC...">
+                </label>
+                <label class="field-stack">
+                  <span>Webhook Secret</span>
+                  <input id="cfgTelegramWebhookSecret" placeholder="tp_wh_xxx">
+                </label>
+                <label class="field-stack">
+                  <span>允许用户 ID</span>
+                  <input id="cfgTelegramAllowedUsers" placeholder="123456789,987654321">
+                </label>
+              </div>
+              <div class="actions actions-split">
+                <button id="saveTelegramConfig" type="button">保存 Bot 配置</button>
+                <button id="registerTelegramWebhook" type="button" class="secondary">注册 Webhook</button>
+              </div>
+              <div id="telegramConfigResult" class="result-box"></div>
+            </div>
+
+            <div id="storageConfigPanel" class="integration-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">Object Storage</p>
+                  <h2>第三方存储桶</h2>
+                </div>
+                <span id="storageConfigBadge" class="badge">本地</span>
+              </div>
+              <div class="integration-grid">
+                <label class="field-stack">
+                  <span>存储类型</span>
+                  <select id="cfgStorageDriver">
+                    <option value="local">本地存储</option>
+                    <option value="s3">S3/R2/MinIO/B2 兼容</option>
+                  </select>
+                </label>
+                <label class="field-stack">
+                  <span>Bucket</span>
+                  <input id="cfgS3Bucket" placeholder="telepic">
+                </label>
+                <label class="field-stack">
+                  <span>Region</span>
+                  <input id="cfgS3Region" placeholder="auto">
+                </label>
+                <label class="field-stack">
+                  <span>Endpoint</span>
+                  <input id="cfgS3Endpoint" placeholder="https://xxx.r2.cloudflarestorage.com">
+                </label>
+                <label class="field-stack">
+                  <span>Access Key ID</span>
+                  <input id="cfgS3AccessKeyId" type="password">
+                </label>
+                <label class="field-stack">
+                  <span>Secret Access Key</span>
+                  <input id="cfgS3SecretAccessKey" type="password">
+                </label>
+                <label class="field-stack">
+                  <span>公开访问域名 / CDN</span>
+                  <input id="cfgS3PublicBaseUrl" placeholder="https://cdn.example.com">
+                </label>
+                <label class="field-stack">
+                  <span>目录前缀</span>
+                  <input id="cfgS3Prefix" placeholder="telepic">
+                </label>
+                <label class="checkline integration-check"><input id="cfgS3ForcePathStyle" type="checkbox" checked> Path-style URL</label>
+              </div>
+              <div class="actions actions-split">
+                <button id="saveStorageConfig" type="button">保存存储配置</button>
+                <button id="testStorageConfig" type="button" class="secondary">测试当前配置</button>
+              </div>
+              <div id="storageConfigResult" class="result-box"></div>
+            </div>
+            <div class="password-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">账号安全</p>
+                  <h2>修改管理员密码</h2>
+                </div>
+              </div>
+              <div class="password-grid">
+                <label class="field-stack">
+                  <span>当前密码</span>
+                  <input id="currentPassword" type="password" autocomplete="current-password">
+                </label>
+                <label class="field-stack">
+                  <span>新密码</span>
+                  <input id="newPassword" type="password" autocomplete="new-password">
+                </label>
+                <label class="field-stack">
+                  <span>确认新密码</span>
+                  <input id="confirmPassword" type="password" autocomplete="new-password">
+                </label>
+                <button id="changePassword" type="button">保存新密码</button>
+              </div>
+              <div id="passwordResult" class="result-box"></div>
+            </div>
+            <div class="api-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">开放接口</p>
+                  <h2>快速 API</h2>
+                </div>
+              </div>
+              <pre id="apiExample" class="mono-box"></pre>
+            </div>
+            <div class="api-panel">
+              <div class="panel-head compact">
+                <div>
+                  <p class="panel-kicker">运行状态</p>
+                  <h2>系统运维状态</h2>
+                </div>
+              </div>
+              <div id="systemStatusPanel" class="config-list"></div>
+            </div>
+          </section>
+
+          <section id="pane-events" class="inspector-pane">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">审计日志</p>
+                <h2>最近操作</h2>
+              </div>
+              <button id="refreshEvents" class="secondary">刷新</button>
+            </div>
+            <div id="events" class="events"></div>
+          </section>
+
+          <section id="pane-tokens" class="inspector-pane">
+            <div class="pane-head">
+              <div>
+                <p class="panel-kicker">访问控制</p>
+                <h2>API 密钥</h2>
+              </div>
+              <button id="createToken">创建</button>
+            </div>
+            <input id="tokenName" class="wide-input" placeholder="密钥名称">
+            <div class="token-scope-row">
+              <label class="checkline"><input id="scopeUpload" type="checkbox" checked> 上传</label>
+              <label class="checkline"><input id="scopeManage" type="checkbox"> 管理</label>
+            </div>
+            <div id="tokenResult" class="result-box"></div>
+            <div id="tokens" class="tokens"></div>
+          </section>
+        </aside>
       </section>
-
-      <section id="view-albums" class="main-view workspace-view">
-        <section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">Albums</p><h2>相册工作区</h2><p class="section-text">创建集合、装配已选图片、封面和排序都集中在这里。</p></div><div class="actions"><input id="albumNameInput" class="wide-input" placeholder="新相册名称"><button id="createAlbum" type="button">创建相册</button></div></div><div class="selection-dock"><div><strong id="albumSelectionSummary">未选择图片</strong><span class="muted-text">从媒体库选择图片后加入相册</span></div><div class="actions"><button id="assignSelectedAlbum" class="secondary" type="button">加入相册</button><button id="clearAlbumFilter" class="secondary" type="button">清除筛选</button></div></div><div id="albumResult" class="result-box"></div><div id="albumGrid" class="album-grid"></div></section>
-        <section class="ops-panel workspace-panel"><div class="pane-head"><div><p class="panel-kicker">Album Detail</p><h2>相册详情</h2></div><span id="albumDetailBadge" class="badge">未选择</span></div><div class="integration-grid"><label class="field-stack"><span>相册名称</span><input id="albumEditName" placeholder="相册名称"></label><label class="field-stack"><span>相册描述</span><input id="albumEditDescription" placeholder="相册描述"></label><label class="field-stack"><span>排序方式</span><select id="albumSortMode"><option value="manual">手动排序</option><option value="newest">最新优先</option><option value="oldest">最早优先</option><option value="name">按名称</option></select></label></div><div class="actions actions-split"><button id="saveAlbumMeta" class="secondary" type="button">保存</button><button id="setAlbumCoverFromCurrent" class="secondary" type="button">设封面</button><button id="removeCurrentFromAlbum" class="secondary" type="button">移出当前图片</button><button id="moveCurrentAlbumUp" class="secondary" type="button">上移</button><button id="moveCurrentAlbumDown" class="secondary" type="button">下移</button><button id="deleteAlbum" class="danger" type="button">删除</button></div><div id="albumDetailResult" class="result-box"></div></section>
-      </section>
-
-      <section id="view-bot" class="main-view workspace-view"><section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">Telegram Bot</p><h2>机器人运维</h2><p class="section-text">Webhook、白名单、测试消息和运行状态。</p></div><span id="telegramBadge" class="badge">检测中</span></div><p id="telegramHint" class="section-text"></p><pre id="telegramWebhook" class="mono-box"></pre><div id="telegramStatusPanel" class="status-panel-grid"></div></section><section class="ops-panel workspace-panel"><div id="telegramConfigMount"></div><div class="integration-panel"><div class="panel-head compact"><div><p class="panel-kicker">Test</p><h2>发送测试消息</h2></div></div><div class="integration-grid"><label class="field-stack"><span>测试 Chat ID</span><input id="telegramTestChatId" placeholder="留空默认白名单用户"></label><label class="field-stack"><span>测试内容</span><input id="telegramTestMessage" placeholder="Telepic 测试消息"></label></div><div class="actions"><button id="sendTelegramTest" type="button" class="secondary">发送测试</button></div><div id="telegramTestResult" class="result-box"></div></div></section></section>
-
-      <section id="view-storage" class="main-view workspace-view"><section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">Storage</p><h2>存储拓扑</h2><p class="section-text">本地、S3/R2/MinIO/B2 兼容存储的状态与迁移。</p></div><span id="storageBadge" class="badge">检测中</span></div><div id="storageStatusPanel" class="status-panel-grid"></div><div class="integration-panel"><div class="panel-head compact"><div><p class="panel-kicker">Migration</p><h2>迁移已有文件</h2></div></div><div class="actions"><button id="migrateStorageData" type="button" class="secondary">迁移到当前存储配置</button></div><div id="storageMigrateResult" class="result-box"></div></div></section><section class="ops-panel workspace-panel"><div id="storageConfigMount"></div></section></section>
-
-      <section id="view-trash" class="main-view workspace-view"><section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">Recovery</p><h2>回收站</h2><p class="section-text">恢复误删图片，或彻底清空空间。</p></div><div class="actions"><button id="refreshTrash" class="secondary" type="button">刷新</button><button id="emptyTrash" class="danger" type="button">清空</button></div></div><div id="trashList" class="trash-list"></div></section></section>
-
-      <section id="view-system" class="main-view workspace-view"><section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">System</p><h2>系统与运行状态</h2></div></div><div id="systemConfig" class="config-list"></div><div id="systemStatusPanel" class="config-list"></div><pre id="apiExample" class="mono-box"></pre></section><section class="ops-panel workspace-panel"><div class="pane-head"><div><p class="panel-kicker">Access</p><h2>密钥与审计</h2></div><button id="refreshEvents" class="secondary">刷新日志</button></div><div class="system-split"><div><div class="token-create-row"><input id="tokenName" class="wide-input" placeholder="密钥名称"><label class="checkline"><input id="scopeUpload" type="checkbox" checked> 上传</label><label class="checkline"><input id="scopeManage" type="checkbox"> 管理</label><button id="createToken">创建</button></div><div id="tokenResult" class="result-box"></div><div id="tokens" class="tokens"></div></div><div><div id="events" class="events"></div></div></div></section><section class="ops-panel workspace-panel"><div class="pane-head"><div><p class="panel-kicker">Security</p><h2>修改管理员密码</h2></div></div><div class="password-grid"><label class="field-stack"><span>当前密码</span><input id="currentPassword" type="password" autocomplete="current-password"></label><label class="field-stack"><span>新密码</span><input id="newPassword" type="password" autocomplete="new-password"></label><label class="field-stack"><span>确认新密码</span><input id="confirmPassword" type="password" autocomplete="new-password"></label><button id="changePassword" type="button">保存新密码</button></div><div id="passwordResult" class="result-box"></div></section></section>
-
-      <section id="view-theme" class="main-view workspace-view"><section class="ops-panel workspace-panel"><div class="board-head"><div><p class="panel-kicker">Appearance</p><h2>主题工作室</h2><p id="themeStorageState" class="section-text">等待同步</p></div><span id="themeBadge" class="badge">当前主题</span></div><div id="themeShowcase" class="theme-showcase"></div><div id="themeLibraryMeta" class="theme-library-meta"></div><div id="themeQuickPicks" class="theme-store-grid"></div></section><section class="ops-panel workspace-panel"><div id="themePreview" class="theme-preview"></div><div class="integration-grid"><label class="field-stack"><span>预设</span><select id="themePreset"><option value="graphite">石墨蓝</option><option value="ember">暗金琥珀</option><option value="forest">深林绿</option><option value="plum">午夜紫</option><option value="custom">自定义</option></select></label><label class="field-stack"><span>名称</span><input id="themeLabel" placeholder="主题名称"></label><label class="field-stack"><span>作者</span><input id="themeAuthor" placeholder="作者"></label><label class="field-stack field-stack-wide"><span>描述</span><input id="themeDescription" placeholder="描述"></label><label class="field-stack"><span>背景</span><input id="themeBg" type="color"></label><label class="field-stack"><span>面板</span><input id="themePanel" type="color"></label><label class="field-stack"><span>文字</span><input id="themeInk" type="color"></label><label class="field-stack"><span>强调</span><input id="themeAccent" type="color"></label><label class="field-stack"><span>危险</span><input id="themeDanger" type="color"></label></div><div class="actions actions-split"><button id="saveTheme" type="button">保存主题</button><button id="installTheme" class="secondary" type="button">安装</button><button id="removeTheme" class="secondary" type="button">移除</button><button id="resetTheme" class="secondary" type="button">重置</button><label class="file-button secondary">背景图<input id="themeBackgroundFile" type="file" accept="image/*"></label><button id="clearThemeBackground" class="secondary" type="button">清除背景</button><button id="exportTheme" class="secondary" type="button">导出</button><label class="file-button secondary">导入<input id="themeImportFile" type="file" accept="application/json"></label></div></section></section>
-    </main>
-
-    <aside class="ops-drawer inspector-shell" id="inspectorShell" aria-label="图片检查器">
-      <div class="drawer-head"><div><p class="panel-kicker">Inspector</p><h2>图片详情</h2></div><button id="closeInspector" class="secondary" type="button">关闭</button></div>
-      <div id="inspectorTabs" class="inspector-tabs"><button class="tab-button is-active" data-pane="detail">详情</button><button class="tab-button" data-pane="system">系统</button><button class="tab-button" data-pane="events">日志</button><button class="tab-button" data-pane="tokens">密钥</button></div>
-      <section id="pane-detail" class="inspector-pane is-active"><div class="pane-head"><div><p class="panel-kicker">Selected Asset</p><h2>资产详情</h2></div><span id="detailBadge" class="badge">未选中</span></div><div id="imageDetail" class="detail-panel"><p class="empty-state">选择一张图片，查看预览、编辑名称标签、复制链接。</p></div></section>
-      <section id="pane-system" class="inspector-pane"><div class="pane-head"><div><p class="panel-kicker">System Shortcut</p><h2>系统快照</h2></div></div><p class="empty-state">完整系统信息已移到 System 工作区。</p></section>
-      <section id="pane-events" class="inspector-pane"><div class="pane-head"><div><p class="panel-kicker">Audit</p><h2>最近操作</h2></div></div><p class="empty-state">审计日志已移到 System 工作区。</p></section>
-      <section id="pane-tokens" class="inspector-pane"><div class="pane-head"><div><p class="panel-kicker">Access</p><h2>API 密钥</h2></div></div><p class="empty-state">API 密钥已移到 System 工作区。</p></section>
-    </aside>
-
-    <div class="ops-hidden-panels">
-      <div id="telegramConfigPanel" class="integration-panel"><div class="panel-head compact"><div><p class="panel-kicker">Telegram Bot</p><h2>快捷对接</h2></div><span id="telegramConfigBadge" class="badge">未配置</span></div><div class="integration-grid"><label class="field-stack"><span>公网地址 PUBLIC_URL</span><input id="cfgPublicUrl" placeholder="https://img.example.com"></label><label class="field-stack"><span>Bot Token</span><input id="cfgTelegramBotToken" type="password" placeholder="123456:ABC..."></label><label class="field-stack"><span>允许用户 ID</span><input id="cfgTelegramAllowedUsers" placeholder="123456789,987654321"></label></div><div class="actions actions-split"><button id="saveTelegramConfig" type="button">保存并自动接入</button></div><div id="telegramConfigResult" class="result-box"></div></div>
-      <div id="storageConfigPanel" class="integration-panel"><div class="panel-head compact"><div><p class="panel-kicker">Object Storage</p><h2>第三方存储桶</h2></div><span id="storageConfigBadge" class="badge">本地</span></div><div class="integration-grid"><label class="field-stack"><span>存储类型</span><select id="cfgStorageDriver"><option value="local">本地存储</option><option value="s3">S3/R2/MinIO/B2 兼容</option></select></label><label class="field-stack"><span>Bucket</span><input id="cfgS3Bucket" placeholder="telepic"></label><label class="field-stack"><span>Region</span><input id="cfgS3Region" placeholder="auto"></label><label class="field-stack"><span>Endpoint</span><input id="cfgS3Endpoint" placeholder="https://xxx.r2.cloudflarestorage.com"></label><label class="field-stack"><span>Access Key ID</span><input id="cfgS3AccessKeyId" type="password"></label><label class="field-stack"><span>Secret Access Key</span><input id="cfgS3SecretAccessKey" type="password"></label><label class="field-stack"><span>公开访问域名 / CDN</span><input id="cfgS3PublicBaseUrl" placeholder="https://cdn.example.com"></label><label class="field-stack"><span>目录前缀</span><input id="cfgS3Prefix" placeholder="telepic"></label><label class="checkline integration-check"><input id="cfgS3ForcePathStyle" type="checkbox" checked> Path-style URL</label></div><div class="actions actions-split"><button id="saveStorageConfig" type="button">保存存储配置</button><button id="testStorageConfig" type="button" class="secondary">测试当前配置</button></div><div id="storageConfigResult" class="result-box"></div></div>
     </div>
   </div>
 
@@ -253,20 +721,26 @@ function htmlPage(config) {
       }
     });
     window.TELEPIC_THEME_PRESETS = {
-      graphite: { bg: '#070b14', panel: '#111827', ink: '#eaf2ff', accent: '#38bdf8', danger: '#fb7185', label: '石墨蓝', backdrop: 'radial-gradient(circle at 18% 12%, rgba(56,189,248,0.16), transparent 30%), radial-gradient(circle at 82% 8%, rgba(99,102,241,0.14), transparent 28%), linear-gradient(135deg, #070b14 0%, #0d1320 52%, #050814 100%)', overlay: 'linear-gradient(180deg, rgba(2,6,23,0.06), rgba(2,6,23,0.38))', panelAlpha: 0.9, blur: 18 },
-      ember: { bg: '#120d0a', panel: '#1f1712', ink: '#fff3e4', accent: '#f59e0b', danger: '#ef4444', label: '暗金琥珀', backdrop: 'radial-gradient(circle at 18% 16%, rgba(245,158,11,0.16), transparent 30%), radial-gradient(circle at 82% 10%, rgba(217,119,6,0.12), transparent 28%), linear-gradient(135deg, #120d0a 0%, #1b130d 54%, #0f0b08 100%)', overlay: 'linear-gradient(180deg, rgba(20,10,4,0.04), rgba(20,10,4,0.42))', panelAlpha: 0.9, blur: 16 },
-      forest: { bg: '#07110d', panel: '#101c16', ink: '#e8fff3', accent: '#34d399', danger: '#f97316', label: '深林绿', backdrop: 'radial-gradient(circle at 16% 14%, rgba(52,211,153,0.16), transparent 30%), radial-gradient(circle at 86% 10%, rgba(20,184,166,0.10), transparent 28%), linear-gradient(135deg, #07110d 0%, #0e1a14 55%, #050d0a 100%)', overlay: 'linear-gradient(180deg, rgba(2,16,10,0.04), rgba(2,16,10,0.42))', panelAlpha: 0.9, blur: 18 },
-      plum: { bg: '#0d0a18', panel: '#17132a', ink: '#f2ecff', accent: '#a78bfa', danger: '#fb7185', label: '午夜紫', backdrop: 'radial-gradient(circle at 18% 12%, rgba(167,139,250,0.18), transparent 30%), radial-gradient(circle at 84% 12%, rgba(236,72,153,0.10), transparent 28%), linear-gradient(135deg, #0d0a18 0%, #151026 54%, #080612 100%)', overlay: 'linear-gradient(180deg, rgba(13,10,24,0.04), rgba(13,10,24,0.44))', panelAlpha: 0.9, blur: 18 }
+      gallery: { bg: '#eef1ee', panel: '#ffffff', ink: '#19201f', accent: '#2f7d68', danger: '#c44f46', label: '艺廊白' },
+      coast: { bg: '#e8f1f2', panel: '#ffffff', ink: '#142429', accent: '#197c8c', danger: '#c65b4d', label: '海岸玻璃' },
+      studio: { bg: '#eceff1', panel: '#fbfbfa', ink: '#1d2227', accent: '#596f82', danger: '#bd4f49', label: '影棚灰' },
+      dusk: { bg: '#f1ece8', panel: '#fffdf9', ink: '#27201d', accent: '#8d6b4f', danger: '#b95148', label: '暮色柔光' },
+      focus: { bg: '#11161a', panel: '#171d22', ink: '#e9eef0', accent: '#58b899', danger: '#ef7868', label: '暗场工作台' },
+      botanical: { bg: '#edf3ef', panel: '#ffffff', ink: '#182126', accent: '#237a57', danger: '#c0463a', label: '植物玻璃' }
     };
     window.TELEPIC_THEME_LIBRARY = {
-      graphite: { id: 'graphite', preset: 'graphite', label: '石墨蓝', author: 'Telepic', category: '高可读深色', description: '冷静的石墨蓝黑底，面板对比清楚。' },
-      ember: { id: 'ember', preset: 'ember', label: '暗金琥珀', author: 'Telepic', category: '暖色深色', description: '暖金强调但不过曝。' },
-      forest: { id: 'forest', preset: 'forest', label: '深林绿', author: 'Telepic', category: '自然深色', description: '低亮度绿色工作台。' },
-      plum: { id: 'plum', preset: 'plum', label: '午夜紫', author: 'Telepic', category: '柔和深色', description: '紫色强调搭配深底。' }
+      gallery: { id: 'gallery', preset: 'gallery', label: '艺廊白', author: 'Telepic', category: '内置主题', description: '明亮克制的策展风格。' },
+      coast: { id: 'coast', preset: 'coast', label: '海岸玻璃', author: 'Telepic', category: '内置主题', description: '轻盈透明的日常管理面板。' },
+      studio: { id: 'studio', preset: 'studio', label: '影棚灰', author: 'Telepic', category: '内置主题', description: '偏专业控制台的中性灰主题。' },
+      dusk: { id: 'dusk', preset: 'dusk', label: '暮色柔光', author: 'Telepic', category: '内置主题', description: '暖色柔和，层次更细腻。' },
+      focus: { id: 'focus', preset: 'focus', label: '暗场工作台', author: 'Telepic', category: '内置主题', description: '适合夜间值守和密集操作。' },
+      botanical: { id: 'botanical', preset: 'botanical', label: '植物玻璃', author: 'Telepic', category: '内置主题', description: '清爽自然，更轻松一点。' }
     };
     window.TELEPIC_THEME_RECOMMENDED = {
-      slateMint: { id: 'slateMint', preset: 'custom', label: '板岩薄荷', author: 'Telepic', category: '推荐主题', description: '灰蓝底配薄荷绿，适合长时间看图和管理。', bg: '#0a1018', panel: '#121c26', ink: '#edf7f4', accent: '#5eead4', danger: '#fb7185', backdrop: 'radial-gradient(circle at 18% 14%, rgba(94,234,212,0.14), transparent 30%), linear-gradient(135deg, #0a1018 0%, #111827 52%, #070b12 100%)', overlay: 'linear-gradient(180deg, rgba(3,7,18,0.04), rgba(3,7,18,0.42))', panelAlpha: 0.9, blur: 18 },
-      inkRose: { id: 'inkRose', preset: 'custom', label: '墨色玫瑰', author: 'Telepic', category: '推荐主题', description: '暗墨底配玫瑰强调，按钮醒目但不过亮。', bg: '#100a12', panel: '#1c121d', ink: '#fff1f7', accent: '#f472b6', danger: '#fb7185', backdrop: 'radial-gradient(circle at 18% 14%, rgba(244,114,182,0.14), transparent 30%), linear-gradient(135deg, #100a12 0%, #1b1020 52%, #09070d 100%)', overlay: 'linear-gradient(180deg, rgba(16,10,18,0.04), rgba(16,10,18,0.42))', panelAlpha: 0.9, blur: 18 }
+      auroraDeck: { id: 'auroraDeck', preset: 'custom', label: '极光控制台', author: '社区精选', category: '推荐主题', description: '冷调科技感，更适合系统面板和集成页面。', bg: '#e8eef6', panel: '#fdfefe', ink: '#102030', accent: '#3d84ff', danger: '#dd5f57' },
+      cinemaAmber: { id: 'cinemaAmber', preset: 'custom', label: '电影琥珀', author: '社区精选', category: '推荐主题', description: '深色基底配暖金强调，夜间观感更稳。', bg: '#181413', panel: '#221b19', ink: '#f4ede8', accent: '#d39a4a', danger: '#f06f62' },
+      paperSignal: { id: 'paperSignal', preset: 'custom', label: '纸感信号', author: '社区精选', category: '推荐主题', description: '更有设计感，也不至于太花。', bg: '#f5f2eb', panel: '#fffdfa', ink: '#1d2329', accent: '#2c78c6', danger: '#cb4d49' },
+      neonHarbor: { id: 'neonHarbor', preset: 'custom', label: '霓虹港湾', author: '社区精选', category: '推荐主题', description: '偏玩家风格的夜景主题。', bg: '#131722', panel: '#191f2e', ink: '#eef3ff', accent: '#61c4ff', danger: '#ff7b82' }
     };
     (function () {
       function qs(selector) { return document.querySelector(selector); }
@@ -451,17 +925,32 @@ function htmlPage(config) {
         if (fallbackState.activeImageId) {
           var exists = false;
           for (i = 0; i < items.length; i += 1) {
+            if (items[i].id === fallbackState.activeImageId) exists = true;
+          }
+          if (!exists) fallbackState.activeImageId = items.length ? items[0].id : '';
+        }
+        if (!target) return;
+        if (!items.length) {
+          target.innerHTML = '<p class="empty-state">还没有图片。先上传一张试试看。</p>';
+          renderDetail();
+          renderSelectionSummary();
+          return;
+        }
+        for (i = 0; i < items.length; i += 1) {
           html += ''
-            + '<article class="asset-row' + (fallbackState.selected[items[i].id] ? ' is-selected' : '') + (fallbackState.activeImageId === items[i].id ? ' is-active' : '') + '" data-id="' + items[i].id + '">'
-            +   '<label class="asset-cell asset-check asset-card-select"><input type="checkbox" data-action="select" ' + (fallbackState.selected[items[i].id] ? 'checked' : '') + '><span>选择</span></label>'
-            +   '<a class="asset-cell asset-thumb asset-card-media" href="' + items[i].url + '" target="_blank" rel="noreferrer"><img src="' + items[i].rawUrl + '" alt="' + escapeHtml(items[i].originalName || items[i].id) + '"></a>'
-            +   '<div class="asset-cell asset-main asset-card-body">'
-            +     '<div class="asset-card-title-row"><strong>' + escapeHtml(items[i].originalName || items[i].id) + '</strong><span class="status-chip ' + (items[i].visibility === 'private' ? 'private' : 'public') + '">' + (items[i].visibility === 'private' ? '私有' : '公开') + '</span></div>'
-            +     '<div class="asset-subline">ID ' + items[i].id + '</div>'
-            +     '<div class="asset-card-chips chip-row"><span class="status-chip">' + (items[i].mime || 'image/*') + '</span><span class="status-chip">' + (items[i].size || 0) + ' B</span></div>'
-            +     '<div class="asset-card-link asset-link"><code>' + escapeHtml(linkFor(items[i], format)) + '</code></div>'
+            + '<article class="asset-row' + (fallbackState.activeImageId === items[i].id ? ' is-active' : '') + '" data-id="' + items[i].id + '">'
+            +   '<div class="asset-cell asset-check"><input type="checkbox" data-action="select" ' + (fallbackState.selected[items[i].id] ? 'checked' : '') + '></div>'
+            +   '<div class="asset-cell asset-file">'
+            +     '<a class="asset-thumb" href="' + items[i].url + '" target="_blank" rel="noreferrer"><img src="' + items[i].rawUrl + '" alt=""></a>'
+            +     '<div class="asset-main">'
+            +       '<strong>' + escapeHtml(items[i].originalName || items[i].id) + '</strong>'
+            +       '<div class="asset-subline">ID ' + items[i].id + '</div>'
+            +       '<div class="chip-row"><span class="status-chip ' + (items[i].visibility === 'private' ? 'private' : 'public') + '">' + (items[i].visibility === 'private' ? '私有' : '公开') + '</span></div>'
+            +     '</div>'
             +   '</div>'
-            +   '<div class="asset-cell asset-actions asset-card-actions"><button class="secondary" data-action="copy">复制</button><button class="secondary" data-action="detail">详情</button><button class="danger" data-action="delete">删除</button></div>'
+            +   '<div class="asset-cell asset-meta"><div>' + items[i].mime + '</div><div>' + items[i].size + ' B</div></div>'
+            +   '<div class="asset-cell asset-link"><code>' + escapeHtml(linkFor(items[i], format)) + '</code></div>'
+            +   '<div class="asset-cell asset-actions"><button class="secondary" data-action="detail">详情</button><button class="secondary" data-action="copy">复制</button><button class="danger" data-action="delete">删除</button></div>'
             + '</article>';
         }
         target.innerHTML = html;
@@ -609,50 +1098,42 @@ function htmlPage(config) {
           }
         });
       }
-      function imageMimeForFile(file) {
-        var explicit = String(file && file.type || '').split(';')[0].trim().toLowerCase();
-        var name = String(file && file.name || '').toLowerCase();
-        if (explicit) return explicit;
-        if (/\.jpe?g$/.test(name)) return 'image/jpeg';
-        if (/\.png$/.test(name)) return 'image/png';
-        if (/\.gif$/.test(name)) return 'image/gif';
-        if (/\.webp$/.test(name)) return 'image/webp';
-        if (/\.avif$/.test(name)) return 'image/avif';
-        if (/\.svg$/.test(name)) return 'image/svg+xml';
-        if (/\.heic$/.test(name)) return 'image/heic';
-        if (/\.heif$/.test(name)) return 'image/heif';
-        return 'application/octet-stream';
-      }
       function fallbackUpload(files) {
         var result = qs('#uploadResult');
         var file;
-        var form;
-        var xhr;
+        var reader;
         if (!files || !files.length) return;
         file = files[0];
-        form = new FormData();
-        form.append('image', file, file.name || 'upload.png');
         if (result) result.textContent = '正在上传...';
-        xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload', true);
-        authHeaders(xhr);
-        xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || 'upload.png'));
-        xhr.onreadystatechange = function () {
-          var data = {};
-          if (xhr.readyState !== 4) return;
-          try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (error) {}
-          if (!result) return;
-          if (xhr.status >= 200 && xhr.status < 300 && data.image) {
-            result.textContent = '上传成功：' + data.image.url;
-            setRuntime('上传接口正常');
-            loadStats();
-            loadImages();
-          } else {
-            result.textContent = (data && data.error) ? data.error : ('上传失败：' + xhr.status);
-            setRuntime('上传接口返回 ' + xhr.status);
-          }
+        reader = new FileReader();
+        reader.onload = function () {
+          var xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/upload', true);
+          authHeaders(xhr);
+          xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+          xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || 'upload.png'));
+          xhr.onreadystatechange = function () {
+            var data = {};
+            if (xhr.readyState !== 4) return;
+            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (error) {}
+            if (!result) return;
+            if (xhr.status >= 200 && xhr.status < 300 && data.image) {
+              result.textContent = '上传成功：' + data.image.url;
+              setRuntime('上传接口正常');
+              loadStats();
+              loadImages();
+            } else {
+              result.textContent = (data && data.error) ? data.error : ('上传失败：' + xhr.status);
+              setRuntime('上传接口返回 ' + xhr.status);
+            }
+          };
+          xhr.send(file);
         };
-        xhr.send(form);
+        reader.onerror = function () {
+          if (result) result.textContent = '读取文件失败';
+          setRuntime('文件读取失败');
+        };
+        reader.readAsArrayBuffer(file);
       }
       function applyTheme(name) {
         var theme = typeof name === 'string' ? (themeById(name) || window.TELEPIC_THEME_PRESETS[name]) : name;
@@ -683,14 +1164,16 @@ function htmlPage(config) {
         } catch (error) {}
       }
       function bindFallback() {
+        var tokenInput = qs('#adminToken');
         var loginOverlay = qs('#loginOverlay');
         var loginUsername = qs('#loginUsername');
         var loginPassword = qs('#loginPassword');
         var loginButton = qs('#loginButton');
+        var logoutToken = qs('#logoutToken');
+        var saveToken = qs('#saveToken');
         var fileInput = qs('#fileInput');
         var gallery = qs('#gallery');
         var detail = qs('#imageDetail');
-        var closeInspectorButton = qs('#closeInspector');
         var fetchButton = qs('#fetchUrlButton');
         var createTokenButton = qs('#createToken');
         var changePasswordButton = qs('#changePassword');
@@ -704,17 +1187,31 @@ function htmlPage(config) {
         var selectAllButton = qs('#selectAllVisible');
         var clearSelectionButton = qs('#clearSelection');
         var copySelectedLinksButton = qs('#copySelectedLinks');
+        var savedToken = '';
         var savedUsername = 'admin';
+        try { savedToken = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
         try { savedUsername = localStorage.getItem('telepic.adminUsername') || 'admin'; } catch (error) {}
+        if (tokenInput && savedToken) tokenInput.value = savedToken;
         if (loginUsername) loginUsername.value = savedUsername;
         function syncLoginOverlay() {
           var token = '';
           try { token = localStorage.getItem('telepic.adminToken') || ''; } catch (error) {}
           if (loginOverlay) loginOverlay.classList.toggle('is-hidden', Boolean(token));
+          if (logoutToken) logoutToken.disabled = !token;
         }
-        function openInspector() { document.body.classList.add('inspector-open'); }
-        function closeInspector() { document.body.classList.remove('inspector-open'); }
         syncLoginOverlay();
+        if (saveToken && tokenInput) {
+          saveToken.addEventListener('click', function () {
+            try { localStorage.setItem('telepic.adminToken', tokenInput.value.trim()); } catch (error) {}
+            var adminState = qs('#adminState');
+            if (adminState) adminState.textContent = tokenInput.value.trim() ? '管理员已登录，本地浏览器已保存' : '未登录管理员';
+            syncLoginOverlay();
+            loadConfig();
+            loadStats();
+            loadImages();
+            setRuntime('基础交互已响应');
+          });
+        }
         if (loginButton && loginUsername && loginPassword) {
           loginButton.addEventListener('click', function () {
             var username = loginUsername.value.trim();
@@ -726,6 +1223,7 @@ function htmlPage(config) {
                   localStorage.setItem('telepic.adminToken', data.token);
                   localStorage.setItem('telepic.adminUsername', data.username || username);
                 } catch (error) {}
+                if (tokenInput) tokenInput.value = data.token;
                 loginPassword.value = '';
                 syncLoginOverlay();
                 loadConfig();
@@ -736,6 +1234,18 @@ function htmlPage(config) {
                 setRuntime((data && data.error) || '登录失败');
               }
             });
+          });
+        }
+        if (logoutToken) {
+          logoutToken.addEventListener('click', function () {
+            try { localStorage.removeItem('telepic.adminToken'); } catch (error) {}
+            if (tokenInput) tokenInput.value = '';
+            if (loginPassword) loginPassword.value = '';
+            syncLoginOverlay();
+            loadConfig();
+            loadStats();
+            loadImages();
+            setRuntime('已退出管理员登录');
           });
         }
         if (fileInput) {
@@ -845,7 +1355,6 @@ function htmlPage(config) {
             if (action === 'copy' && image) {
               copyText(linkFor(image, currentLinkFormat()), function () { setRuntime('图片链接已复制'); });
             }
-            if (action === 'detail' || !action) openInspector();
             if (action === 'delete' && image) {
               deleteImage(id, function () { setRuntime('图片已删除'); });
               return;
@@ -853,7 +1362,6 @@ function htmlPage(config) {
             renderGallery({ images: fallbackState.images });
           });
         }
-        if (closeInspectorButton) closeInspectorButton.addEventListener('click', closeInspector);
         if (detail) {
           detail.addEventListener('click', function (event) {
             var action = event.target.getAttribute('data-detail-action');
@@ -979,7 +1487,7 @@ function htmlPage(config) {
             if (parsed && (parsed.id || parsed.preset)) applyTheme(parsed.id || parsed.preset);
           }
         } catch (error) {}
-        renderFallbackThemeStore('graphite');
+        renderFallbackThemeStore('gallery');
         loadConfig();
         loadStats();
         loadImages();

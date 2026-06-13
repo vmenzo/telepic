@@ -1555,17 +1555,36 @@ function renderTelegramStatus() {
   if (chatInput && !chatInput.value && status.allowedUserIds && status.allowedUserIds.length) {
     chatInput.value = status.allowedUserIds[0];
   }
+  const recentEvents = (status.recentEvents || []).map((item) => `
+    <article class="event-item">
+      <div class="event-head"><strong>${escapeHtml(item.type)}</strong><small>${formatDate(item.createdAt)}</small></div>
+      <div class="event-body">${escapeHtml(renderEventDetails(item.details))}</div>
+    </article>
+  `).join('') || '<p class="empty-state">暂无 Telegram 相关事件。</p>';
   panel.innerHTML = `
-    <article class="dashboard-panel">
-      <div class="pane-head"><div><p class="panel-kicker">Bot 状态</p><h2>${status.enabled ? '已配置' : '未配置'}</h2></div></div>
-      <div class="config-list">
+    <article class="dashboard-panel bot-status-layout">
+      <div class="pane-head">
+        <div>
+          <p class="panel-kicker">Bot 状态</p>
+          <h2>${status.enabled ? '已配置' : '未配置'}</h2>
+        </div>
+      </div>
+      <div class="config-list bot-status-list">
         ${configRow('Webhook', status.webhookUrl || '未生成')}
         ${configRow('允许用户', (status.allowedUserIds || []).join(', ') || '未配置')}
         ${configRow('机器人', status.bot && status.bot.result ? `${status.bot.result.username || ''} (${status.bot.result.id})` : '未获取')}
         ${configRow('最后错误', status.webhook && status.webhook.result ? (status.webhook.result.last_error_message || '无') : (status.error || '无'))}
         ${configRow('待处理更新', status.webhook && status.webhook.result ? String(status.webhook.result.pending_update_count || 0) : '0')}
       </div>
-      <div class="events">${(status.recentEvents || []).map((item) => `<article class="event-item"><div class="event-head"><strong>${escapeHtml(item.type)}</strong><small>${formatDate(item.createdAt)}</small></div><div class="event-body">${escapeHtml(renderEventDetails(item.details))}</div></article>`).join('') || '<p class="empty-state">暂无 Telegram 相关事件。</p>'}</div>
+      <section class="bot-events-panel">
+        <div class="panel-head compact">
+          <div>
+            <p class="panel-kicker">Telegram Events</p>
+            <h2>最近事件</h2>
+          </div>
+        </div>
+        <div class="events">${recentEvents}</div>
+      </section>
     </article>
   `;
 }

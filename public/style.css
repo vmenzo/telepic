@@ -434,6 +434,69 @@ a {
   border-bottom: 1px solid var(--line);
 }
 
+.bot-console-shell {
+  padding: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.bot-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.bot-console-main,
+.bot-console-side,
+.bot-config-mount {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+#view-bot .status-panel-grid {
+  padding: 0;
+  border-bottom: 0;
+}
+
+#view-bot .dashboard-panel,
+#view-bot .integration-panel {
+  min-width: 0;
+}
+
+#view-bot .config-list {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+#view-bot .integration-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#view-bot .config-row,
+#view-bot .event-body,
+#view-bot .result-box,
+#view-bot input {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bot-status-layout,
+.bot-events-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.bot-events-panel {
+  margin-top: 16px;
+}
+
+.bot-events-panel .events {
+  max-height: min(460px, 48vh);
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .trash-list {
   padding: 18px;
 }
@@ -1605,6 +1668,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .bot-console-grid {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: static;
     height: auto;
@@ -1667,8 +1734,13 @@ a {
   .detail-actions,
   .token-box,
   .batch-row,
-  .command-list {
+  .command-list,
+  #view-bot .integration-grid {
     grid-template-columns: 1fr;
+  }
+
+  .bot-console-shell {
+    padding: 14px;
   }
 
   .asset-table-head {

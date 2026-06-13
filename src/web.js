@@ -357,30 +357,38 @@ function htmlPage(config) {
               <p class="section-text">在这里配置 Bot Token、Webhook、白名单用户，并把 Telegram 管理能力接到图床。</p>
             </div>
           </div>
-          <div id="telegramStatusPanel" class="status-panel-grid"></div>
-          <div class="integration-panel">
-            <div class="panel-head compact">
-              <div>
-                <p class="panel-kicker">Telegram Test</p>
-                <h2>测试消息</h2>
+          <div class="bot-console-shell">
+            <div class="bot-console-grid">
+              <div class="bot-console-main">
+                <div id="telegramStatusPanel" class="status-panel-grid bot-status-panel"></div>
+              </div>
+              <div class="bot-console-side">
+                <div id="telegramConfigMount" class="bot-config-mount"></div>
+                <div class="integration-panel bot-test-panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="panel-kicker">Telegram Test</p>
+                      <h2>测试消息</h2>
+                    </div>
+                  </div>
+                  <div class="integration-grid">
+                    <label class="field-stack">
+                      <span>测试 Chat ID</span>
+                      <input id="telegramTestChatId" placeholder="留空则默认第一个白名单用户">
+                    </label>
+                    <label class="field-stack">
+                      <span>测试内容</span>
+                      <input id="telegramTestMessage" placeholder="Telepic 测试消息">
+                    </label>
+                  </div>
+                  <div class="actions">
+                    <button id="sendTelegramTest" type="button" class="secondary">发送测试消息</button>
+                  </div>
+                  <div id="telegramTestResult" class="result-box"></div>
+                </div>
               </div>
             </div>
-            <div class="integration-grid">
-              <label class="field-stack">
-                <span>测试 Chat ID</span>
-                <input id="telegramTestChatId" placeholder="留空则默认第一个白名单用户">
-              </label>
-              <label class="field-stack">
-                <span>测试内容</span>
-                <input id="telegramTestMessage" placeholder="Telepic 测试消息">
-              </label>
-            </div>
-            <div class="actions">
-              <button id="sendTelegramTest" type="button" class="secondary">发送测试消息</button>
-            </div>
-            <div id="telegramTestResult" class="result-box"></div>
           </div>
-          <div id="telegramConfigMount"></div>
         </section>
       </section>
 

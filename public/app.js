@@ -476,14 +476,15 @@ async function uploadFiles(files) {
 
   for (const file of files) {
     try {
+      const form = new FormData();
+      form.append('image', file, file.name || 'upload');
       const data = await request('/api/upload', {
         method: 'POST',
         headers: {
-          'content-type': imageMimeForFile(file),
           'x-file-name': safeHeaderFileName(file.name || 'upload'),
           'x-storage-driver': storageDriver
         },
-        body: file
+        body: form
       });
       state.activeImageId = data.image.id;
       pushUploadHistory(`已上传 ${file.name}`, data.image.url);
@@ -2741,6 +2742,12 @@ function humanizeError(message) {
   }
   if (message.includes('Management requires an admin token')) {
     return '当前操作需要管理员密钥。';
+  }
+  if (message.includes('Payload too large') || message.includes('too large')) {
+    return '图片太大，当前最多支持 50MB。请压缩后再上传，或调整服务器 MAX_UPLOAD_BYTES。';
+  }
+  if (message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('Load failed')) {
+    return '上传请求没有发到服务器。请检查网络后重试；如果是在手机浏览器，请刷新页面后重新登录再上传。';
   }
   if (message.includes('Unsupported image type') || message.includes('Remote file is not a supported image')) {
     return '不支持这个图片格式。请上传 JPG、PNG、GIF、WebP、AVIF、SVG、HEIC 或 HEIF 图片。';

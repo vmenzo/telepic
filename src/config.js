@@ -77,5 +77,5 @@ module.exports = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || 'change-me-webhook-secret',
   telegramAllowedUserIds: csv(process.env.TELEGRAM_ALLOWED_USER_IDS),
-  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024)
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024)
 };

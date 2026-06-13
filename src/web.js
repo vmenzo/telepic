@@ -626,39 +626,33 @@ function htmlPage(config) {
       function fallbackUpload(files) {
         var result = qs('#uploadResult');
         var file;
-        var reader;
+        var form;
+        var xhr;
         if (!files || !files.length) return;
         file = files[0];
+        form = new FormData();
+        form.append('image', file, file.name || 'upload.png');
         if (result) result.textContent = '正在上传...';
-        reader = new FileReader();
-        reader.onload = function () {
-          var xhr = new XMLHttpRequest();
-          xhr.open('POST', '/api/upload', true);
-          authHeaders(xhr);
-          xhr.setRequestHeader('Content-Type', imageMimeForFile(file));
-          xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || 'upload.png'));
-          xhr.onreadystatechange = function () {
-            var data = {};
-            if (xhr.readyState !== 4) return;
-            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (error) {}
-            if (!result) return;
-            if (xhr.status >= 200 && xhr.status < 300 && data.image) {
-              result.textContent = '上传成功：' + data.image.url;
-              setRuntime('上传接口正常');
-              loadStats();
-              loadImages();
-            } else {
-              result.textContent = (data && data.error) ? data.error : ('上传失败：' + xhr.status);
-              setRuntime('上传接口返回 ' + xhr.status);
-            }
-          };
-          xhr.send(file);
+        xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload', true);
+        authHeaders(xhr);
+        xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || 'upload.png'));
+        xhr.onreadystatechange = function () {
+          var data = {};
+          if (xhr.readyState !== 4) return;
+          try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (error) {}
+          if (!result) return;
+          if (xhr.status >= 200 && xhr.status < 300 && data.image) {
+            result.textContent = '上传成功：' + data.image.url;
+            setRuntime('上传接口正常');
+            loadStats();
+            loadImages();
+          } else {
+            result.textContent = (data && data.error) ? data.error : ('上传失败：' + xhr.status);
+            setRuntime('上传接口返回 ' + xhr.status);
+          }
         };
-        reader.onerror = function () {
-          if (result) result.textContent = '读取文件失败';
-          setRuntime('文件读取失败');
-        };
-        reader.readAsArrayBuffer(file);
+        xhr.send(form);
       }
       function applyTheme(name) {
         var theme = typeof name === 'string' ? (themeById(name) || window.TELEPIC_THEME_PRESETS[name]) : name;

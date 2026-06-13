@@ -176,9 +176,23 @@ async function route(req, res) {
 
   if (req.method === 'POST' && pathname === '/api/upload') {
     const auth = requireUpload(req, db, config);
-    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
-    const image = await uploadFromRequest(req, auth.actor, uploadStorageDriverFromRequest(req, url));
-    return json(res, 201, { image: publicImage(image) });
+    if (!auth.ok) {
+      console.warn('Upload rejected by auth', { statusCode: auth.statusCode, message: auth.message });
+      return json(res, auth.statusCode, { error: auth.message });
+    }
+    try {
+      const image = await uploadFromRequest(req, auth.actor, uploadStorageDriverFromRequest(req, url));
+      return json(res, 201, { image: publicImage(image) });
+    } catch (error) {
+      console.warn('Upload failed', {
+        statusCode: error.statusCode || 500,
+        message: error.message,
+        contentType: req.headers['content-type'] || '',
+        fileName: req.headers['x-file-name'] || '',
+        contentLength: req.headers['content-length'] || ''
+      });
+      throw error;
+    }
   }
 
   if (req.method === 'POST' && pathname === '/api/upload-from-url') {

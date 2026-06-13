@@ -1,225 +1,74 @@
 const THEME_PRESETS = {
-  gallery: {
-    label: '艺廊白',
-    bg: '#eef1ee',
-    panel: '#ffffff',
-    ink: '#19201f',
-    accent: '#2f7d68',
-    danger: '#c44f46',
-    backdrop: 'radial-gradient(circle at 18% 12%, rgba(47,125,104,0.18), transparent 30%), radial-gradient(circle at 84% 18%, rgba(219,154,87,0.18), transparent 28%), linear-gradient(135deg, #eef1ee 0%, #f8f6f0 52%, #e8eff2 100%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.18))',
-    panelAlpha: 0.88,
+  graphite: {
+    label: '石墨蓝',
+    bg: '#070b14',
+    panel: '#111827',
+    ink: '#eaf2ff',
+    accent: '#38bdf8',
+    danger: '#fb7185',
+    backdrop: 'radial-gradient(circle at 18% 12%, rgba(56,189,248,0.16), transparent 30%), radial-gradient(circle at 82% 8%, rgba(99,102,241,0.14), transparent 28%), linear-gradient(135deg, #070b14 0%, #0d1320 52%, #050814 100%)',
+    overlay: 'linear-gradient(180deg, rgba(2,6,23,0.06), rgba(2,6,23,0.38))',
+    panelAlpha: 0.9,
     blur: 18
   },
-  coast: {
-    label: '海岸玻璃',
-    bg: '#e8f1f2',
-    panel: '#ffffff',
-    ink: '#142429',
-    accent: '#197c8c',
-    danger: '#c65b4d',
-    backdrop: 'radial-gradient(circle at 18% 18%, rgba(25,124,140,0.28), transparent 30%), radial-gradient(circle at 84% 24%, rgba(244,170,91,0.22), transparent 30%), linear-gradient(135deg, #dfeff0 0%, #f7fbfa 48%, #edf0e7 100%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.36), rgba(255,255,255,0.12))',
-    panelAlpha: 0.82,
-    blur: 22
+  ember: {
+    label: '暗金琥珀',
+    bg: '#120d0a',
+    panel: '#1f1712',
+    ink: '#fff3e4',
+    accent: '#f59e0b',
+    danger: '#ef4444',
+    backdrop: 'radial-gradient(circle at 18% 16%, rgba(245,158,11,0.16), transparent 30%), radial-gradient(circle at 82% 10%, rgba(217,119,6,0.12), transparent 28%), linear-gradient(135deg, #120d0a 0%, #1b130d 54%, #0f0b08 100%)',
+    overlay: 'linear-gradient(180deg, rgba(20,10,4,0.04), rgba(20,10,4,0.42))',
+    panelAlpha: 0.9,
+    blur: 16
   },
-  studio: {
-    label: '影棚灰',
-    bg: '#eceff1',
-    panel: '#fbfbfa',
-    ink: '#1d2227',
-    accent: '#596f82',
-    danger: '#bd4f49',
-    backdrop: 'linear-gradient(120deg, rgba(255,255,255,0.78), rgba(210,217,222,0.58)), repeating-linear-gradient(90deg, rgba(40,48,56,0.045) 0 1px, transparent 1px 96px)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0.08))',
-    panelAlpha: 0.90,
-    blur: 14
-  },
-  dusk: {
-    label: '暮色柔光',
-    bg: '#f1ece8',
-    panel: '#fffdf9',
-    ink: '#27201d',
-    accent: '#8d6b4f',
-    danger: '#b95148',
-    backdrop: 'radial-gradient(circle at 22% 18%, rgba(221,145,96,0.28), transparent 32%), radial-gradient(circle at 78% 12%, rgba(93,125,142,0.20), transparent 28%), linear-gradient(135deg, #f5ede7 0%, #f8f6ef 52%, #e9eef1 100%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.16))',
-    panelAlpha: 0.86,
+  forest: {
+    label: '深林绿',
+    bg: '#07110d',
+    panel: '#101c16',
+    ink: '#e8fff3',
+    accent: '#34d399',
+    danger: '#f97316',
+    backdrop: 'radial-gradient(circle at 16% 14%, rgba(52,211,153,0.16), transparent 30%), radial-gradient(circle at 86% 10%, rgba(20,184,166,0.10), transparent 28%), linear-gradient(135deg, #07110d 0%, #0e1a14 55%, #050d0a 100%)',
+    overlay: 'linear-gradient(180deg, rgba(2,16,10,0.04), rgba(2,16,10,0.42))',
+    panelAlpha: 0.9,
     blur: 18
   },
-  focus: {
-    label: '暗场工作台',
-    bg: '#11161a',
-    panel: '#171d22',
-    ink: '#e9eef0',
-    accent: '#58b899',
-    danger: '#ef7868',
-    backdrop: 'radial-gradient(circle at 18% 18%, rgba(88,184,153,0.18), transparent 30%), radial-gradient(circle at 82% 12%, rgba(232,184,104,0.13), transparent 26%), linear-gradient(135deg, #11161a 0%, #1c2226 52%, #12171b 100%)',
-    overlay: 'linear-gradient(180deg, rgba(0,0,0,0.16), rgba(0,0,0,0.30))',
-    panelAlpha: 0.82,
-    blur: 20
-  },
-  botanical: {
-    label: '植物玻璃',
-    bg: '#edf3ef',
-    panel: '#ffffff',
-    ink: '#182126',
-    accent: '#237a57',
-    danger: '#c0463a',
-    backdrop: 'radial-gradient(circle at 16% 18%, rgba(35,122,87,0.24), transparent 30%), radial-gradient(circle at 90% 8%, rgba(87,132,166,0.18), transparent 26%), linear-gradient(135deg, #edf3ef 0%, #f8faf7 50%, #e9eef3 100%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.12))',
-    panelAlpha: 0.86,
+  plum: {
+    label: '午夜紫',
+    bg: '#0d0a18',
+    panel: '#17132a',
+    ink: '#f2ecff',
+    accent: '#a78bfa',
+    danger: '#fb7185',
+    backdrop: 'radial-gradient(circle at 18% 12%, rgba(167,139,250,0.18), transparent 30%), radial-gradient(circle at 84% 12%, rgba(236,72,153,0.10), transparent 28%), linear-gradient(135deg, #0d0a18 0%, #151026 54%, #080612 100%)',
+    overlay: 'linear-gradient(180deg, rgba(13,10,24,0.04), rgba(13,10,24,0.44))',
+    panelAlpha: 0.9,
     blur: 18
   }
 };
 
 const THEME_LIBRARY = {
-  gallery: {
-    id: 'gallery',
-    preset: 'gallery',
-    label: '艺廊白',
-    author: 'Telepic',
-    category: '编辑感',
-    description: '明亮克制的策展风格，适合展示作品集、截图墙和品牌素材。',
-    cover: '',
-    ...THEME_PRESETS.gallery
-  },
-  coast: {
-    id: 'coast',
-    preset: 'coast',
-    label: '海岸玻璃',
-    author: 'Telepic',
-    category: '玻璃感',
-    description: '通透轻盈的半透明面板，适合大众审美下的日常图床后台。',
-    cover: '',
-    ...THEME_PRESETS.coast
-  },
-  studio: {
-    id: 'studio',
-    preset: 'studio',
-    label: '影棚灰',
-    author: 'Telepic',
-    category: '中性色',
-    description: '偏专业控制台气质的中性灰主题，适合长时间管理和运维查看。',
-    cover: '',
-    ...THEME_PRESETS.studio
-  },
-  dusk: {
-    id: 'dusk',
-    preset: 'dusk',
-    label: '暮色柔光',
-    author: 'Telepic',
-    category: '生活感',
-    description: '暖色柔和、层次细腻，适合个人站长和内容型图片管理场景。',
-    cover: '',
-    ...THEME_PRESETS.dusk
-  },
-  focus: {
-    id: 'focus',
-    preset: 'focus',
-    label: '暗场工作台',
-    author: 'Telepic',
-    category: '深色',
-    description: '低亮度高对比的深色工作界面，适合夜间值守和密集操作。',
-    cover: '',
-    ...THEME_PRESETS.focus
-  },
-  botanical: {
-    id: 'botanical',
-    preset: 'botanical',
-    label: '植物玻璃',
-    author: 'Telepic',
-    category: '自然系',
-    description: '清新的植物配色和玻璃质感，更适合轻松一点的运营氛围。',
-    cover: '',
-    ...THEME_PRESETS.botanical
-  }
+  graphite: { id: 'graphite', preset: 'graphite', label: '石墨蓝', author: 'Telepic', category: '高可读深色', description: '冷静的石墨蓝黑底，面板对比清楚，适合作为默认运维界面。', cover: '', ...THEME_PRESETS.graphite },
+  ember: { id: 'ember', preset: 'ember', label: '暗金琥珀', author: 'Telepic', category: '暖色深色', description: '暖金强调但不过曝，适合夜间管理和内容审核。', cover: '', ...THEME_PRESETS.ember },
+  forest: { id: 'forest', preset: 'forest', label: '深林绿', author: 'Telepic', category: '自然深色', description: '低亮度绿色工作台，状态和操作区分明显。', cover: '', ...THEME_PRESETS.forest },
+  plum: { id: 'plum', preset: 'plum', label: '午夜紫', author: 'Telepic', category: '柔和深色', description: '紫色强调搭配深底，保留个性但保证文字清晰。', cover: '', ...THEME_PRESETS.plum }
 };
 
 const RECOMMENDED_THEME_PACKS = {
-  auroraDeck: {
-    id: 'auroraDeck',
-    preset: 'custom',
-    label: '极光控制台',
-    author: '社区精选',
-    category: '推荐主题',
-    description: '偏冷调的科技感主题，适合做对象存储、Bot 和系统状态这类信息面板。',
-    cover: '',
-    bg: '#e8eef6',
-    panel: '#fdfefe',
-    ink: '#102030',
-    accent: '#3d84ff',
-    danger: '#dd5f57',
-    backdrop: 'radial-gradient(circle at 14% 18%, rgba(61,132,255,0.24), transparent 28%), radial-gradient(circle at 82% 18%, rgba(104,211,255,0.22), transparent 24%), linear-gradient(135deg, #ebf4ff 0%, #f8fbff 52%, #ebf1f8 100%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.10))',
-    panelAlpha: 0.84,
-    blur: 22,
-    image: ''
+  slateMint: {
+    id: 'slateMint', preset: 'custom', label: '板岩薄荷', author: 'Telepic', category: '推荐主题', description: '灰蓝底配薄荷绿，适合长时间看图和管理。', cover: '',
+    bg: '#0a1018', panel: '#121c26', ink: '#edf7f4', accent: '#5eead4', danger: '#fb7185',
+    backdrop: 'radial-gradient(circle at 18% 14%, rgba(94,234,212,0.14), transparent 30%), linear-gradient(135deg, #0a1018 0%, #111827 52%, #070b12 100%)',
+    overlay: 'linear-gradient(180deg, rgba(3,7,18,0.04), rgba(3,7,18,0.42))', panelAlpha: 0.9, blur: 18, image: ''
   },
-  cinemaAmber: {
-    id: 'cinemaAmber',
-    preset: 'custom',
-    label: '电影琥珀',
-    author: '社区精选',
-    category: '推荐主题',
-    description: '深色基底配暖金强调，适合夜间管理和内容审核场景，整体更稳一些。',
-    cover: '',
-    bg: '#181413',
-    panel: '#221b19',
-    ink: '#f4ede8',
-    accent: '#d39a4a',
-    danger: '#f06f62',
-    backdrop: 'radial-gradient(circle at 14% 20%, rgba(211,154,74,0.24), transparent 28%), radial-gradient(circle at 84% 14%, rgba(255,218,142,0.12), transparent 22%), linear-gradient(135deg, #181413 0%, #241b18 54%, #151212 100%)',
-    overlay: 'linear-gradient(180deg, rgba(12,8,6,0.16), rgba(12,8,6,0.32))',
-    panelAlpha: 0.84,
-    blur: 20,
-    image: ''
-  },
-  paperSignal: {
-    id: 'paperSignal',
-    preset: 'custom',
-    label: '纸感信号',
-    author: '社区精选',
-    category: '推荐主题',
-    description: '轻纸感背景和红蓝对比点缀，风格更鲜明，适合想要一点设计感的站长。',
-    cover: '',
-    bg: '#f5f2eb',
-    panel: '#fffdfa',
-    ink: '#1d2329',
-    accent: '#2c78c6',
-    danger: '#cb4d49',
-    backdrop: 'linear-gradient(120deg, rgba(255,255,255,0.74), rgba(242,234,224,0.54)), repeating-linear-gradient(0deg, rgba(44,120,198,0.035) 0 1px, transparent 1px 88px), radial-gradient(circle at 84% 16%, rgba(203,77,73,0.10), transparent 24%)',
-    overlay: 'linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0.12))',
-    panelAlpha: 0.9,
-    blur: 14,
-    image: ''
-  },
-  neonHarbor: {
-    id: 'neonHarbor',
-    preset: 'custom',
-    label: '霓虹港湾',
-    author: '社区精选',
-    category: '推荐主题',
-    description: '紫蓝交替的夜景氛围，适合想让面板更有玩家主题味道的使用者。',
-    cover: '',
-    bg: '#131722',
-    panel: '#191f2e',
-    ink: '#eef3ff',
-    accent: '#61c4ff',
-    danger: '#ff7b82',
-    backdrop: 'radial-gradient(circle at 18% 18%, rgba(97,196,255,0.20), transparent 30%), radial-gradient(circle at 84% 12%, rgba(176,118,255,0.18), transparent 26%), linear-gradient(135deg, #10141d 0%, #191d2c 48%, #121722 100%)',
-    overlay: 'linear-gradient(180deg, rgba(10,14,22,0.16), rgba(10,14,22,0.32))',
-    panelAlpha: 0.82,
-    blur: 22,
-    image: ''
+  inkRose: {
+    id: 'inkRose', preset: 'custom', label: '墨色玫瑰', author: 'Telepic', category: '推荐主题', description: '暗墨底配玫瑰强调，按钮醒目但不过亮。', cover: '',
+    bg: '#100a12', panel: '#1c121d', ink: '#fff1f7', accent: '#f472b6', danger: '#fb7185',
+    backdrop: 'radial-gradient(circle at 18% 14%, rgba(244,114,182,0.14), transparent 30%), linear-gradient(135deg, #100a12 0%, #1b1020 52%, #09070d 100%)',
+    overlay: 'linear-gradient(180deg, rgba(16,10,18,0.04), rgba(16,10,18,0.42))', panelAlpha: 0.9, blur: 18, image: ''
   }
-};
-
-const THEME_SOURCE_LABELS = {
-  builtin: '内置主题',
-  recommended: '推荐主题',
-  installed: '我的主题',
-  custom: '自定义草稿'
 };
 
 const DEFAULT_STATS = {
@@ -286,9 +135,8 @@ const state = {
   uploadHistory: [],
   themeLibrary: loadStoredThemeLibrary(),
   theme: loadTheme(),
-  mainView: 'library',
-  inspectorPane: 'detail',
-  loginDismissed: safeStorageGet(sessionStorage, 'telepic.loginDismissed', '') === '1'
+  mainView: 'overview',
+  inspectorPane: 'detail'
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -335,18 +183,12 @@ try {
 }
 
 function bindEvents() {
-  on('#saveToken', 'click', saveAdminToken);
-  on('#logoutToken', 'click', logoutAdminToken);
   on('#loginButton', 'click', saveLoginToken);
-  on('#loginGuest', 'click', dismissLogin);
   on('#loginUsername', 'keydown', (event) => {
     if (event.key === 'Enter') saveLoginToken();
   });
   on('#loginPassword', 'keydown', (event) => {
     if (event.key === 'Enter') saveLoginToken();
-  });
-  on('#adminToken', 'keydown', (event) => {
-    if (event.key === 'Enter') saveAdminToken();
   });
   on('#fileInput', 'change', (event) => uploadFiles(event.target.files));
   on('#dropzone', 'dragover', onDragOver);
@@ -359,7 +201,6 @@ function bindEvents() {
   on('#createToken', 'click', createToken);
   on('#changePassword', 'click', changeAdminPassword);
   on('#saveTelegramConfig', 'click', saveTelegramConfig);
-  on('#registerTelegramWebhook', 'click', registerTelegramWebhook);
   on('#saveStorageConfig', 'click', saveStorageConfig);
   on('#testStorageConfig', 'click', testStorageConfig);
   on('#searchInput', 'input', debounce(resetImagePageAndRefresh, 220));
@@ -398,6 +239,7 @@ function bindEvents() {
   on('#sendTelegramTest', 'click', sendTelegramTest);
   on('#migrateStorageData', 'click', migrateStorageData);
   on('#inspectorTabs', 'click', handleInspectorTabs);
+  on('#closeInspector', 'click', closeInspector);
   if ($('#themePreset')) on('#themePreset', 'change', onThemePresetChange);
   if ($('#themeQuickPicks')) on('#themeQuickPicks', 'click', handleThemeQuickPick);
   if ($('#saveTheme')) on('#saveTheme', 'click', saveThemeFromInputs);
@@ -421,17 +263,9 @@ function bindEvents() {
 }
 
 function hydrateSession() {
-  const tokenInput = $('#adminToken');
-  if (tokenInput) tokenInput.value = state.adminToken;
   const loginUsername = $('#loginUsername');
   if (loginUsername) loginUsername.value = state.adminUsername;
   syncAdminState();
-}
-
-function saveAdminToken() {
-  state.adminToken = $('#adminToken').value.trim();
-  persistAdminToken(state.adminToken);
-  toast(state.adminToken ? '管理员身份已更新' : '已清空管理员密钥');
 }
 
 async function saveLoginToken() {
@@ -453,12 +287,8 @@ async function saveLoginToken() {
     state.adminUsername = data.username || username;
     applySessionRefresh(data);
     safeStorageSet(localStorage, 'telepic.adminUsername', state.adminUsername);
-    const tokenInput = $('#adminToken');
     const passwordInput = $('#loginPassword');
-    if (tokenInput) tokenInput.value = state.adminToken;
     if (passwordInput) passwordInput.value = '';
-    state.loginDismissed = false;
-    safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
     persistAdminToken(state.adminToken);
     $('#loginMessage').textContent = data.expiresAt ? `已登录，会话有效期至 ${formatDate(data.expiresAt)}` : '已登录。';
     toast('管理员登录成功');
@@ -472,23 +302,13 @@ function logoutAdminToken() {
   clearSessionIdleTimer();
   state.adminToken = '';
   state.sessionIdleExpiresAt = 0;
-  state.loginDismissed = false;
   safeStorageRemove(localStorage, 'telepic.adminToken');
   safeStorageRemove(localStorage, 'telepic.sessionIdleExpiresAt');
-  safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
-  const tokenInput = $('#adminToken');
   const passwordInput = $('#loginPassword');
-  if (tokenInput) tokenInput.value = '';
   if (passwordInput) passwordInput.value = '';
   syncAdminState();
   refresh();
   toast('已退出管理员登录');
-}
-
-function dismissLogin() {
-  state.loginDismissed = true;
-  safeStorageSet(sessionStorage, 'telepic.loginDismissed', '1');
-  syncAdminState();
 }
 
 function persistAdminToken(token) {
@@ -516,13 +336,16 @@ function syncAdminState() {
   const loggedIn = Boolean(state.adminToken);
   const sessionExpired = loggedIn && (isSessionIdleExpired() || (state.config && state.config.adminAuthenticated === false));
   const overlay = $('#loginOverlay');
+  const adminState = $('#adminState');
   const logout = $('#logoutToken');
-  $('#adminState').textContent = sessionExpired
-    ? '登录已失效，请重新登录'
-    : (loggedIn ? '管理员已登录，本地浏览器已保存' : '未登录管理员');
+  if (adminState) {
+    adminState.textContent = sessionExpired
+      ? '登录已失效，请重新登录'
+      : (loggedIn ? '管理员已登录，本地浏览器已保存' : '未登录管理员');
+  }
   if (logout) logout.disabled = !loggedIn;
   if (overlay) {
-    const hideOverlay = (loggedIn && !sessionExpired) || state.loginDismissed;
+    const hideOverlay = loggedIn && !sessionExpired;
     overlay.classList.toggle('is-hidden', hideOverlay);
     overlay.setAttribute('aria-hidden', hideOverlay ? 'true' : 'false');
   }
@@ -584,8 +407,6 @@ function applySessionRefresh(data = {}) {
       safeStorageSet(localStorage, 'telepic.sessionIdleExpiresAt', String(idleExpiresAt));
     }
   }
-  const tokenInput = $('#adminToken');
-  if (tokenInput) tokenInput.value = state.adminToken;
   scheduleSessionIdleCheck();
 }
 
@@ -627,12 +448,8 @@ function expireSession() {
   clearSessionIdleTimer();
   state.adminToken = '';
   state.sessionIdleExpiresAt = 0;
-  state.loginDismissed = false;
   safeStorageRemove(localStorage, 'telepic.adminToken');
   safeStorageRemove(localStorage, 'telepic.sessionIdleExpiresAt');
-  safeStorageRemove(sessionStorage, 'telepic.loginDismissed');
-  const tokenInput = $('#adminToken');
-  if (tokenInput) tokenInput.value = '';
   syncAdminState();
   toast('登录空闲超过 30 分钟，请重新登录。');
 }
@@ -662,7 +479,7 @@ async function uploadFiles(files) {
       const data = await request('/api/upload', {
         method: 'POST',
         headers: {
-          'content-type': file.type || 'application/octet-stream',
+          'content-type': imageMimeForFile(file),
           'x-file-name': safeHeaderFileName(file.name || 'upload'),
           'x-storage-driver': storageDriver
         },
@@ -676,6 +493,8 @@ async function uploadFiles(files) {
   }
 
   renderUploadHistory();
+  const fileInput = $('#fileInput');
+  if (fileInput) fileInput.value = '';
   await refresh();
   setInspectorPane('detail');
 }
@@ -718,7 +537,7 @@ async function refreshConfig() {
       : '在 .env 中配置 TELEGRAM_BOT_TOKEN、PUBLIC_URL、TELEGRAM_ALLOWED_USER_IDS 后，再运行 webhook 脚本即可启用。';
     $('#telegramWebhook').textContent = state.config.telegramWebhookUrl
       ? `Webhook\n${state.config.telegramWebhookUrl}`
-      : 'Webhook\n保存管理员密钥后显示完整 webhook 地址';
+      : 'Webhook\n登录管理员账号后显示完整 webhook 地址';
     $('#storageBadge').textContent = state.config.storageDriver === 'local' ? '本地存储' : '对象存储';
     $('#storageBadge').className = `badge ${state.config.storageDriver === 'local' ? '' : 'ok'}`;
     hydrateIntegrationForms();
@@ -777,15 +596,15 @@ function syncUploadGate() {
   }
 
   if (state.adminToken) {
-    badge.textContent = '已授权上传';
+    badge.textContent = '已登录';
     badge.className = 'badge ok';
-    hint.textContent = '当前站点关闭匿名上传，你已保存管理员密钥，可正常上传和管理图片。';
+    hint.textContent = '当前站点关闭匿名上传，你已登录管理员账号，可正常上传和管理图片。';
     return;
   }
 
-  badge.textContent = '需要密钥';
+  badge.textContent = '需要登录';
   badge.className = 'badge';
-  hint.textContent = '当前站点关闭匿名上传。请先在右上角填入管理员密钥，或创建上传 API 密钥后再上传。';
+  hint.textContent = '当前站点关闭匿名上传。请先登录管理员账号后再上传。';
 }
 
 async function refreshStats() {
@@ -849,7 +668,7 @@ async function refreshImages() {
 
 async function refreshTokens() {
   if (!state.adminToken) {
-    $('#tokens').innerHTML = '<p class="empty-state">保存管理员密钥后可查看和创建 API 密钥。</p>';
+    $('#tokens').innerHTML = '<p class="empty-state">登录管理员账号后可查看和创建 API 密钥。</p>';
     return;
   }
 
@@ -952,38 +771,36 @@ function renderImages() {
     const active = state.activeImageId === image.id;
     const tags = (image.tags || []).length ? image.tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag)}</span>`).join('') : '<span class="tag-chip muted">无标签</span>';
     const preview = linkFor(image, format);
+    const title = escapeHtml(image.originalName || image.id);
+    const visibilityLabel = image.visibility === 'private' ? '私有' : '公开';
 
     return `
-      <article class="asset-row ${selected ? 'is-selected' : ''} ${active ? 'is-active' : ''}" data-id="${image.id}">
-        <div class="asset-cell asset-check">
-          <input type="checkbox" data-action="select" ${selected ? 'checked' : ''} aria-label="选择图片">
+      <article class="asset-row media-card ${selected ? 'is-selected' : ''} ${active ? 'is-active' : ''}" data-id="${image.id}">
+        <a class="media-card-preview" href="${previewPageUrl(image)}" target="_blank" rel="noreferrer" aria-label="打开 ${title}">
+          <img src="${previewRawUrl(image)}" alt="${title}" loading="lazy">
+          <span class="media-card-glow"></span>
+        </a>
+        <div class="media-card-topline">
+          <label class="asset-card-select" title="选择图片">
+            <input type="checkbox" data-action="select" ${selected ? 'checked' : ''} aria-label="选择图片">
+            <span>选择</span>
+          </label>
+          <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${visibilityLabel}</span>
         </div>
-        <div class="asset-cell asset-file">
-          <a class="asset-thumb" href="${previewPageUrl(image)}" target="_blank" rel="noreferrer">
-            <img src="${previewRawUrl(image)}" alt="${escapeHtml(image.originalName || image.id)}" loading="lazy">
-          </a>
-          <div class="asset-main">
-            <strong title="${escapeHtml(image.originalName || image.id)}">${escapeHtml(image.originalName || image.id)}</strong>
-            <div class="asset-subline">ID ${image.id} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</div>
-            <div class="asset-subline">创建于 ${formatDate(image.createdAt)}</div>
-            <div class="chip-row">
-              <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
-              <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
-              <span class="status-chip">${escapeHtml(storageDriverName(image.storageDriver))}</span>
-            </div>
+        <div class="media-card-body">
+          <strong title="${title}">${title}</strong>
+          <p>ID ${image.id}</p>
+          <p>${escapeHtml(image.storageKey || image.fileName || '无存储键')}</p>
+          <div class="media-card-chips">
+            <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
+            <span class="status-chip">${escapeHtml(storageDriverName(image.storageDriver))}</span>
+            <span class="status-chip">${escapeHtml(image.mime || 'image/*')}</span>
+            <span class="status-chip">${formatBytes(image.size)}</span>
           </div>
-        </div>
-        <div class="asset-cell asset-meta">
-          <div>${escapeHtml(image.mime)}</div>
-          <div>${formatBytes(image.size)}</div>
-          <div>归属：${escapeHtml(image.owner || '未知')}</div>
-          <div>更新于 ${formatDate(image.updatedAt)}</div>
           <div class="tag-row">${tags}</div>
+          <code class="media-card-link">${escapeHtml(preview)}</code>
         </div>
-        <div class="asset-cell asset-link">
-          <code>${escapeHtml(preview)}</code>
-        </div>
-        <div class="asset-cell asset-actions">
+        <div class="media-card-actions">
           <button class="secondary" data-action="copy">复制</button>
           <button class="secondary" data-action="detail">详情</button>
           <button class="secondary" data-action="visibility">${image.visibility === 'private' ? '公开' : '私有'}</button>
@@ -1024,6 +841,7 @@ async function handleGalleryClick(event) {
   if (!action) {
     renderImages();
     renderImageDetail();
+    if (isCompactLayout()) openInspector();
     return;
   }
 
@@ -1041,6 +859,7 @@ async function handleGalleryClick(event) {
 
   if (action === 'detail') {
     setInspectorPane('detail');
+    openInspector();
     toast('已打开图片详情');
   }
 
@@ -1152,6 +971,19 @@ function setInspectorPane(pane) {
   document.querySelectorAll('.inspector-pane').forEach((section) => {
     section.classList.toggle('is-active', section.id === `pane-${pane}`);
   });
+  if (isCompactLayout()) openInspector();
+}
+
+function isCompactLayout() {
+  return window.matchMedia('(max-width: 860px)').matches;
+}
+
+function openInspector() {
+  document.body.classList.add('inspector-open');
+}
+
+function closeInspector() {
+  document.body.classList.remove('inspector-open');
 }
 
 function currentImage() {
@@ -1188,7 +1020,6 @@ async function createToken() {
     });
     $('#tokenResult').textContent = `新密钥只显示一次：${data.token}`;
     $('#tokenName').value = '';
-    setInspectorPane('tokens');
     await refreshTokens();
     await refreshStats();
     toast('API 密钥已创建');
@@ -1281,9 +1112,19 @@ async function saveTelegramConfig() {
       body: JSON.stringify(payload)
     });
     if ($('#cfgTelegramBotToken')) $('#cfgTelegramBotToken').value = '';
-    if (result) result.textContent = 'Telegram 配置已保存，Webhook: ' + (data.telegramWebhookUrl || '未生成');
-    toast('Telegram 配置已保存');
+    if (result) result.textContent = 'Telegram 配置已保存，正在自动注册 Webhook...';
+
+    if (data.telegramEnabled || payload.botToken) {
+      const webhook = await request('/api/integrations/telegram/webhook', { method: 'POST' });
+      if (result) result.textContent = 'Telegram 配置已保存，Webhook 已自动注册: ' + webhook.webhookUrl;
+      toast('Telegram 配置已保存，Webhook 已自动注册');
+    } else {
+      if (result) result.textContent = 'Telegram 配置已保存；未配置 Bot Token，跳过 Webhook 注册。';
+      toast('Telegram 配置已保存');
+    }
+
     await refreshConfig();
+    await refreshTelegramStatus();
   } catch (error) {
     if (result) result.textContent = error.message;
     toast(error.message);
@@ -1439,7 +1280,7 @@ function selectedUploadStorageDriver() {
 
 async function refreshEvents() {
   if (!state.adminToken) {
-    $('#events').innerHTML = '<p class="empty-state">保存管理员密钥后可查看最近操作。</p>';
+    $('#events').innerHTML = '<p class="empty-state">登录管理员账号后可查看最近操作。</p>';
     return;
   }
 
@@ -1674,17 +1515,26 @@ function setMainView(view) {
   document.querySelectorAll('.main-nav-button').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.mainView === view);
   });
-  const visibleView = view === 'system' ? 'library' : view;
   document.querySelectorAll('.main-view').forEach((section) => {
-    section.classList.toggle('is-active', section.id === `view-${visibleView}`);
+    section.classList.toggle('is-active', section.id === `view-${view}`);
   });
-  if (view === 'system') setInspectorPane('system');
+  if (view !== 'library') closeInspector();
   if (view === 'bot' || view === 'storage') mountIntegrationPanels();
   if (view === 'albums') {
     renderAlbums();
     renderAlbumDetail();
   }
   if (view === 'trash') renderTrash();
+  if (view === 'system') {
+    renderSystemStatus();
+    renderApiExample();
+    refreshEvents().catch((error) => toast(error.message));
+    refreshTokens().catch((error) => toast(error.message));
+  }
+  if (view === 'theme') {
+    renderThemeStore();
+    renderThemePreview(state.theme);
+  }
 }
 
 function mountIntegrationPanels() {
@@ -1798,25 +1648,27 @@ function renderImageDetail() {
   $('#detailBadge').textContent = image ? image.id : '未选中';
 
   if (!image) {
-    $('#imageDetail').innerHTML = '<p class="empty-state">点击列表中的任意图片，在这里查看预览、编辑名称和标签、复制不同格式的链接。</p>';
+    $('#imageDetail').innerHTML = '<p class="empty-state">选择一张图片，查看预览、编辑名称标签、复制链接。</p>';
     return;
   }
 
   $('#imageDetail').innerHTML = `
-    <div class="detail-hero">
-      <img class="detail-image" src="${previewRawUrl(image)}" alt="${escapeHtml(image.originalName || image.id)}">
-      <div class="detail-summary">
-        <strong>${escapeHtml(image.originalName || image.id)}</strong>
-        <div class="chip-row">
-          <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
-          <span class="status-chip">${escapeHtml(sourceName(image.source))}</span>
-          <span class="status-chip">${escapeHtml(storageDriverName(image.storageDriver))}</span>
-        </div>
-        <p class="muted-text">${escapeHtml(image.mime)} · ${formatBytes(image.size)}</p>
-        <p class="muted-text">归属 ${escapeHtml(image.owner || '未知')} · ${escapeHtml(image.storageKey || image.fileName || '无存储键')}</p>
-      </div>
+    <div class="drawer-preview">
+      <img src="${previewRawUrl(image)}" alt="${escapeHtml(image.originalName || image.id)}">
     </div>
-
+    <div class="drawer-title-block">
+      <div>
+        <p class="panel-kicker">Selected Asset</p>
+        <h3>${escapeHtml(image.originalName || image.id)}</h3>
+      </div>
+      <span class="status-chip ${image.visibility === 'private' ? 'private' : 'public'}">${image.visibility === 'private' ? '私有' : '公开'}</span>
+    </div>
+    <div class="detail-actions primary-actions">
+      <button class="secondary" data-detail-action="copy-page">复制页面</button>
+      <button class="secondary" data-detail-action="copy-raw">复制直链</button>
+      <button class="secondary" data-detail-action="toggle-visibility">${image.visibility === 'private' ? '设为公开' : '设为私有'}</button>
+      <button class="danger" data-detail-action="delete">删除</button>
+    </div>
     <div class="detail-editors">
       <label class="field-stack">
         <span>图片名称</span>
@@ -1829,7 +1681,18 @@ function renderImageDetail() {
       </label>
       <button class="secondary" data-detail-action="save-tags">保存标签</button>
     </div>
-
+    <div class="detail-grid compact-links">
+      ${configRow('页面链接', image.url)}
+      ${configRow('图片直链', image.rawUrl)}
+      ${configRow('Markdown', linkFor(image, 'markdown'))}
+      ${configRow('HTML', linkFor(image, 'html'))}
+      ${configRow('BBCode', linkFor(image, 'bbcode'))}
+    </div>
+    <div class="detail-actions">
+      <button class="secondary" data-detail-action="copy-markdown">复制 Markdown</button>
+      <button class="secondary" data-detail-action="copy-html">复制 HTML</button>
+      <button class="secondary" data-detail-action="copy-bbcode">复制 BBCode</button>
+    </div>
     <div class="detail-grid">
       ${configRow('图片 ID', image.id)}
       ${configRow('文件名', image.fileName || '未记录')}
@@ -1839,26 +1702,9 @@ function renderImageDetail() {
       ${configRow('来源', sourceName(image.source))}
       ${configRow('MIME', image.mime)}
       ${configRow('大小', formatBytes(image.size))}
-      ${configRow('可见性', image.visibility === 'private' ? '私有' : '公开')}
       ${configRow('创建时间', formatDate(image.createdAt))}
       ${configRow('更新时间', formatDate(image.updatedAt))}
       ${configRow('SHA256', image.sha256)}
-      ${configRow('页面链接', image.url)}
-      ${configRow('图片直链', image.rawUrl)}
-      ${configRow('应用直链', image.appRawUrl || image.rawUrl)}
-      ${configRow('Markdown', linkFor(image, 'markdown'))}
-      ${configRow('HTML', linkFor(image, 'html'))}
-      ${configRow('BBCode', linkFor(image, 'bbcode'))}
-    </div>
-
-    <div class="detail-actions">
-      <button class="secondary" data-detail-action="copy-page">复制页面链接</button>
-      <button class="secondary" data-detail-action="copy-raw">复制图片直链</button>
-      <button class="secondary" data-detail-action="copy-markdown">复制 Markdown</button>
-      <button class="secondary" data-detail-action="copy-html">复制 HTML</button>
-      <button class="secondary" data-detail-action="copy-bbcode">复制 BBCode</button>
-      <button class="secondary" data-detail-action="toggle-visibility">${image.visibility === 'private' ? '设为公开' : '设为私有'}</button>
-      <button class="danger" data-detail-action="delete">删除图片</button>
     </div>
   `;
 }
@@ -2278,10 +2124,10 @@ async function saveThemeFromInputs() {
     ink: $('#themeInk').value,
     accent: $('#themeAccent').value,
     danger: $('#themeDanger').value,
-    backdrop: state.theme.backdrop || THEME_PRESETS.gallery.backdrop,
-    overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
-    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
-    blur: state.theme.blur || THEME_PRESETS.gallery.blur,
+    backdrop: state.theme.backdrop || THEME_PRESETS.graphite.backdrop,
+    overlay: state.theme.overlay || THEME_PRESETS.graphite.overlay,
+    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.graphite.panelAlpha,
+    blur: state.theme.blur || THEME_PRESETS.graphite.blur,
     image: state.theme.image || '',
     source: 'installed'
   };
@@ -2294,13 +2140,13 @@ async function saveThemeFromInputs() {
 }
 
 function resetThemePreset() {
-  const preset = $('#themePreset').value === 'custom' ? 'gallery' : $('#themePreset').value;
+  const preset = $('#themePreset').value === 'custom' ? 'graphite' : $('#themePreset').value;
   if (preset !== 'custom' && THEME_PRESETS[preset]) {
     applyPresetTheme(preset);
     toast('已恢复当前预设');
     return;
   }
-  state.theme = normalizeTheme(themePackForPreset('gallery'));
+  state.theme = normalizeTheme(themePackForPreset('graphite'));
   applyTheme(state.theme);
   syncThemeInputs(state.theme);
   syncThemeQuickPicks(state.theme.preset);
@@ -2322,10 +2168,10 @@ function previewCustomTheme() {
     ink: $('#themeInk').value,
     accent: $('#themeAccent').value,
     danger: $('#themeDanger').value,
-    backdrop: state.theme.backdrop || THEME_PRESETS.gallery.backdrop,
-    overlay: state.theme.overlay || THEME_PRESETS.gallery.overlay,
-    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
-    blur: state.theme.blur || THEME_PRESETS.gallery.blur,
+    backdrop: state.theme.backdrop || THEME_PRESETS.graphite.backdrop,
+    overlay: state.theme.overlay || THEME_PRESETS.graphite.overlay,
+    panelAlpha: state.theme.panelAlpha || THEME_PRESETS.graphite.panelAlpha,
+    blur: state.theme.blur || THEME_PRESETS.graphite.blur,
     image: state.theme.image || '',
     source: 'custom'
   };
@@ -2395,7 +2241,7 @@ function applyTheme(theme, updateState = true) {
   root.style.setProperty('--panel-bg', hexToRgba(theme.panel, theme.image ? Math.min(theme.panelAlpha || 0.88, 0.68) : (theme.panelAlpha || 0.88)));
   root.style.setProperty('--panel-blur', `${theme.image ? Math.max(theme.blur || 16, 24) : (theme.blur || 16)}px`);
   root.style.setProperty('--theme-image', theme.image ? `url("${theme.image}")` : 'none');
-  root.style.setProperty('--theme-backdrop', theme.backdrop || THEME_PRESETS.gallery.backdrop);
+  root.style.setProperty('--theme-backdrop', theme.backdrop || THEME_PRESETS.graphite.backdrop);
   root.style.setProperty('--theme-overlay', theme.image
     ? 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06))'
     : (theme.overlay || 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.08))'));
@@ -2574,7 +2420,7 @@ function importThemePack(event) {
 
 function syncThemeInputs(theme) {
   if (!$('#themePreset')) return;
-  $('#themePreset').value = theme.preset || 'gallery';
+  $('#themePreset').value = theme.preset || 'graphite';
   $('#themeBg').value = theme.bg;
   $('#themePanel').value = theme.panel;
   $('#themeInk').value = theme.ink;
@@ -2598,12 +2444,18 @@ async function loadServerTheme() {
   } else if (!state.themeLibrary.length) {
     state.themeLibrary = [];
   }
-  if (!data.theme) {
-    setThemeStorageState('暂无云端主题');
+  const cloudTheme = normalizeTheme(data.theme);
+  const hasReadableCloudTheme = data.theme && (cloudTheme.preset !== 'custom' || isReadableTheme(data.theme));
+  if (!hasReadableCloudTheme) {
+    state.theme = normalizeTheme(themePackForPreset('graphite'));
+    applyTheme(state.theme);
+    persistTheme();
+    setThemeStorageState(data.theme ? '旧主题已替换为高可读默认主题' : '暂无云端主题');
+    if ($('#themePreset')) syncThemeInputs(state.theme);
     if ($('#themeShowcase') || $('#themeQuickPicks') || $('#themeLibraryMeta')) renderThemeStore();
     return;
   }
-  state.theme = normalizeTheme(data.theme);
+  state.theme = cloudTheme;
   applyTheme(state.theme);
   if ($('#themePreset')) syncThemeInputs(state.theme);
   if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
@@ -2668,7 +2520,7 @@ async function removeCurrentTheme() {
     return;
   }
   state.themeLibrary = nextLibrary;
-  state.theme = normalizeTheme(themePackForPreset('gallery'));
+  state.theme = normalizeTheme(themePackForPreset('graphite'));
   applyTheme(state.theme);
   if ($('#themePreset')) syncThemeInputs(state.theme);
   if ($('#themeQuickPicks')) syncThemeQuickPicks(state.theme.preset);
@@ -2683,6 +2535,11 @@ async function removeCurrentTheme() {
 function setThemeStorageState(text) {
   const el = $('#themeStorageState');
   if (el) el.textContent = text;
+}
+
+function isReadableTheme(theme) {
+  if (!theme || typeof theme !== 'object') return false;
+  return luminance(theme.bg || '#000000') < 0.28 && luminance(theme.panel || '#000000') < 0.36 && luminance(theme.ink || '#ffffff') > 0.72;
 }
 
 function normalizeTheme(theme) {
@@ -2700,15 +2557,15 @@ function normalizeTheme(theme) {
     description: String(theme.description || ''),
     cover: String(theme.cover || theme.image || ''),
     source: String(theme.source || 'custom'),
-    bg: normalizeColor(theme.bg, THEME_PRESETS.gallery.bg),
-    panel: normalizeColor(theme.panel, THEME_PRESETS.gallery.panel),
-    ink: normalizeColor(theme.ink, THEME_PRESETS.gallery.ink),
-    accent: normalizeColor(theme.accent, THEME_PRESETS.gallery.accent),
-    danger: normalizeColor(theme.danger, THEME_PRESETS.gallery.danger),
-    backdrop: theme.backdrop || THEME_PRESETS.gallery.backdrop,
-    overlay: theme.overlay || THEME_PRESETS.gallery.overlay,
-    panelAlpha: theme.panelAlpha || THEME_PRESETS.gallery.panelAlpha,
-    blur: theme.blur || THEME_PRESETS.gallery.blur,
+    bg: normalizeColor(theme.bg, THEME_PRESETS.graphite.bg),
+    panel: normalizeColor(theme.panel, THEME_PRESETS.graphite.panel),
+    ink: normalizeColor(theme.ink, THEME_PRESETS.graphite.ink),
+    accent: normalizeColor(theme.accent, THEME_PRESETS.graphite.accent),
+    danger: normalizeColor(theme.danger, THEME_PRESETS.graphite.danger),
+    backdrop: theme.backdrop || THEME_PRESETS.graphite.backdrop,
+    overlay: theme.overlay || THEME_PRESETS.graphite.overlay,
+    panelAlpha: theme.panelAlpha || THEME_PRESETS.graphite.panelAlpha,
+    blur: theme.blur || THEME_PRESETS.graphite.blur,
     image: theme.image || ''
   });
 }
@@ -2798,15 +2655,15 @@ function renderThemePreview(theme) {
 function loadTheme() {
   try {
     const raw = safeStorageGet(localStorage, 'telepic.theme', '');
-    if (!raw) return { preset: 'gallery', ...THEME_PRESETS.gallery };
+    if (!raw) return { preset: 'graphite', ...THEME_PRESETS.graphite };
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return { preset: 'gallery', ...THEME_PRESETS.gallery };
+    if (!parsed || typeof parsed !== 'object') return { preset: 'graphite', ...THEME_PRESETS.graphite };
     if (parsed.preset && THEME_PRESETS[parsed.preset] && parsed.preset !== 'custom') {
       return { ...parsed, preset: parsed.preset, ...THEME_PRESETS[parsed.preset], image: parsed.image || '' };
     }
     return normalizeTheme(parsed);
   } catch {
-    return { preset: 'gallery', ...THEME_PRESETS.gallery };
+    return { preset: 'graphite', ...THEME_PRESETS.graphite };
   }
 }
 
@@ -2819,6 +2676,25 @@ function loadStoredThemeLibrary() {
   } catch {
     return [];
   }
+}
+
+async function imageMimeForFile(file) {
+  const explicit = String(file && file.type || '').split(';')[0].trim().toLowerCase();
+  if (explicit) return explicit;
+  const name = String(file && file.name || '').toLowerCase();
+  if (/\.jpe?g$/.test(name)) return 'image/jpeg';
+  if (/\.png$/.test(name)) return 'image/png';
+  if (/\.gif$/.test(name)) return 'image/gif';
+  if (/\.webp$/.test(name)) return 'image/webp';
+  if (/\.avif$/.test(name)) return 'image/avif';
+  if (/\.svg$/.test(name)) return 'image/svg+xml';
+  if (/\.heic$/.test(name)) return 'image/heic';
+  if (/\.heif$/.test(name)) return 'image/heif';
+  return 'application/octet-stream';
+}
+
+function safeHeaderFileName(value) {
+  return encodeURIComponent(String(value || 'upload'));
 }
 
 async function handlePasteUpload(event) {
@@ -2861,10 +2737,13 @@ function renderSourceSummary(breakdown = {}) {
 function humanizeError(message) {
   if (!message) return '请求失败';
   if (message.includes('Upload requires an admin token or API token')) {
-    return '上传被拒绝：当前站点未开启匿名上传，请先填写管理员密钥或使用上传 API 密钥。';
+    return '上传被拒绝：当前站点未开启匿名上传，请先登录管理员账号。';
   }
   if (message.includes('Management requires an admin token')) {
     return '当前操作需要管理员密钥。';
+  }
+  if (message.includes('Unsupported image type') || message.includes('Remote file is not a supported image')) {
+    return '不支持这个图片格式。请上传 JPG、PNG、GIF、WebP、AVIF、SVG、HEIC 或 HEIF 图片。';
   }
   if (message.includes('Invalid username or password')) {
     return '用户名或密码不正确。';
@@ -3035,34 +2914,11 @@ function capitalize(value) {
 }
 
 function themeName(preset) {
-  if (preset === 'gallery') return '艺廊白';
-  if (preset === 'coast') return '海岸玻璃';
-  if (preset === 'studio') return '影棚灰';
-  if (preset === 'dusk') return '暮色柔光';
-  if (preset === 'focus') return '暗场工作台';
-  if (preset === 'botanical') return '植物玻璃';
-  if (preset === 'custom') return '自定义';
-  return capitalize(preset);
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
-}
-
-function safeHeaderFileName(name) {
-  return encodeURIComponent(String(name || 'upload').replace(/[\r\n]/g, '').slice(0, 180));
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  if (preset === 'graphite') return '石墨蓝';
+  if (preset === 'ember') return '暗金琥珀';
+  if (preset === 'forest') return '深林绿';
+  if (preset === 'plum') return '午夜紫';
+  return '自定义';
 }
 
 function debounce(fn, delay) {

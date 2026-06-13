@@ -11,7 +11,7 @@ const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, perman
 const { createStorage } = require('./storage');
 const { handleTelegramUpdate, registerTelegramBotCommands, telegramAllowedUpdates, telegramApi } = require('./telegram');
 const { htmlPage, imagePage } = require('./web');
-const { isImageMime, json, parseJsonBody, text } = require('./utils');
+const { cleanMime, isImageMime, json, normalizeImageMime, parseJsonBody, readBody, text } = require('./utils');
 const packageJson = require('../package.json');
 
 const db = createDb(config);
@@ -634,22 +634,21 @@ async function route(req, res) {
 
 async function uploadFromRequest(req, actor, storageDriver = config.storageDriver) {
   assertUploadStorageReady(storageDriver);
-  const contentType = req.headers['content-type'] || '';
+  const contentType = cleanMime(req.headers['content-type'] || '');
   let file;
 
-  if (contentType.startsWith('multipart/form-data')) {
+  if (contentType === 'multipart/form-data') {
     const parts = await parseMultipartRequest(req, config.maxUploadBytes);
     file = parts.find((part) => part.filename && part.name === 'image') || parts.find((part) => part.filename);
-  } else if (contentType.startsWith('image/')) {
-    const { readBody } = require('./utils');
+  } else if (!contentType || contentType.startsWith('image/') || contentType === 'application/octet-stream') {
     const buffer = await readBody(req, config.maxUploadBytes);
     file = {
       filename: decodeHeaderFileName(req.headers['x-file-name'] || 'upload'),
-      mime: contentType.split(';')[0],
+      mime: contentType,
       data: buffer
     };
   } else {
-    const error = new Error('Use multipart/form-data with an image field, or send a raw image/* body.');
+    const error = new Error('Use multipart/form-data with an image field, or send a raw image body.');
     error.statusCode = 415;
     throw error;
   }
@@ -660,8 +659,10 @@ async function uploadFromRequest(req, actor, storageDriver = config.storageDrive
     throw error;
   }
 
+  file.mime = normalizeImageMime(file.mime, file.filename, file.data);
+
   if (!isImageMime(file.mime)) {
-    const error = new Error(`Unsupported image type: ${file.mime}`);
+    const error = new Error(`Unsupported image type: ${file.mime || 'unknown'}`);
     error.statusCode = 415;
     throw error;
   }
@@ -714,13 +715,7 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
     throw error;
   }
 
-  const mime = (response.headers.get('content-type') || '').split(';')[0].trim();
-  if (!isImageMime(mime)) {
-    const error = new Error(`Remote file is not a supported image: ${mime || 'unknown'}`);
-    error.statusCode = 415;
-    throw error;
-  }
-
+  const responseMime = response.headers.get('content-type') || '';
   const contentLength = Number(response.headers.get('content-length') || 0);
   if (contentLength && contentLength > config.maxUploadBytes) {
     const error = new Error('Remote image is too large.');
@@ -736,6 +731,13 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
   }
 
   const fileName = decodeURIComponent(parsed.pathname.split('/').pop() || 'remote-image');
+  const mime = normalizeImageMime(responseMime, fileName, buffer);
+  if (!isImageMime(mime)) {
+    const error = new Error(`Remote file is not a supported image: ${mime || 'unknown'}`);
+    error.statusCode = 415;
+    throw error;
+  }
+
   const targetStorage = storageForDriver(storageDriver);
   const image = await targetStorage.saveImage({
     buffer,

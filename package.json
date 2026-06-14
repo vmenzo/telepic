@@ -12,6 +12,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "check": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "set-telegram-webhook": "node scripts/set-telegram-webhook.js",
+    "backfill:metadata": "npm run build:server && node scripts/backfill-metadata.js",
     "backup": "sh scripts/backup.sh",
     "restore": "sh scripts/restore.sh"
   },
@@ -52,6 +53,7 @@
     "vite": "^8.0.16"
   },
   "dependencies": {
-    "fastify": "^5.8.5"
+    "fastify": "^5.8.5",
+    "sharp": "^0.35.1"
   }
 }

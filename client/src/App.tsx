@@ -1161,7 +1161,9 @@ export function App() {
               <div className="grid gap-2 rounded-md bg-muted p-3 text-xs text-muted-foreground">
                 <span>ID：{editingImage.id}</span>
                 <span>类型：{editingImage.mime}</span>
+                <span>尺寸：{imageDimensionsLabel(editingImage)}</span>
                 <span>大小：{formatBytes(editingImage.size)}</span>
+                <span>哈希：{editingImage.sha256 || '-'}</span>
                 <span>创建：{formatDate(editingImage.createdAt)}</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1427,7 +1429,7 @@ function ImageTableRow(props: LibraryImageProps) {
       <div className="max-xl:flex max-xl:justify-end"><ImageCheckbox {...props} /></div>
       <div className="flex min-w-0 items-center gap-3">
         <button className="group/thumb relative h-14 w-14 overflow-hidden rounded-md bg-muted" onClick={(event) => { event.stopPropagation(); props.openLightbox(image); }}>
-          <img className="h-full w-full object-cover transition group-hover/thumb:scale-105" src={previewRawUrl(image, props.linkToken)} alt="" />
+          <ImagePreview className="h-full w-full object-cover transition group-hover/thumb:scale-105" src={previewThumbUrl(image, props.linkToken)} alt="" />
           <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover/thumb:bg-black/30 group-hover/thumb:opacity-100">
             <Maximize2 className="h-4 w-4" />
           </span>
@@ -1441,6 +1443,7 @@ function ImageTableRow(props: LibraryImageProps) {
       <div className="text-xs text-muted-foreground">
         <p>{image.mime}</p>
         <p>{formatBytes(image.size)}</p>
+        <p>{imageDimensionsLabel(image)}</p>
         <p>{formatDate(image.createdAt)}</p>
       </div>
       <code className="block max-w-full truncate rounded bg-muted px-2 py-1 text-xs">{linkFor(image, props.linkFormat, props.linkToken)}</code>
@@ -1463,7 +1466,7 @@ function ImageGridCard(props: LibraryImageProps) {
       }}
     >
       <div className="relative aspect-[4/3] bg-muted">
-        <img className="h-full w-full object-cover" src={previewRawUrl(image, props.linkToken)} alt="" loading="lazy" />
+        <ImagePreview className="h-full w-full object-cover" src={previewThumbUrl(image, props.linkToken)} alt="" />
         <div className="absolute left-2 top-2">
           <ImageCheckbox {...props} />
         </div>
@@ -1474,7 +1477,7 @@ function ImageGridCard(props: LibraryImageProps) {
       <div className="space-y-2 p-3">
         <div className="min-w-0">
           <strong className="block truncate text-sm">{image.originalName || image.fileName || image.id}</strong>
-          <p className="truncate text-xs text-muted-foreground">{formatBytes(image.size)} · {formatDate(image.createdAt)}</p>
+          <p className="truncate text-xs text-muted-foreground">{formatBytes(image.size)} · {imageDimensionsLabel(image)} · {formatDate(image.createdAt)}</p>
         </div>
         <code className="block truncate rounded bg-muted px-2 py-1 text-xs">{linkFor(image, props.linkFormat, props.linkToken)}</code>
         <ImageActions {...props} />
@@ -1583,10 +1586,10 @@ function Inspector(props: {
         {props.pane === 'detail' && (
           props.image ? (
             <div className="space-y-3">
-              <img className="h-48 w-full rounded-md bg-muted object-contain" src={previewRawUrl(props.image, getStoredToken())} alt="" />
+              <ImagePreview className="h-48 w-full rounded-md bg-muted object-contain" src={previewThumbUrl(props.image, getStoredToken())} alt="" />
               <div>
                 <strong className="block truncate">{props.image.originalName || props.image.id}</strong>
-                <p className="text-xs text-muted-foreground">{props.image.mime} · {formatBytes(props.image.size)}</p>
+                <p className="text-xs text-muted-foreground">{props.image.mime} · {formatBytes(props.image.size)} · {imageDimensionsLabel(props.image)}</p>
               </div>
               <Button className="w-full" variant="secondary" onClick={() => props.openDetail(props.image!)}>
                 打开编辑
@@ -1785,7 +1788,7 @@ function Lightbox(props: {
               <div>
                 <p className="text-xs text-muted-foreground">{props.index + 1} / {props.total}</p>
                 <h3 className="mt-1 break-words text-lg font-semibold">{props.image.originalName || props.image.fileName || props.image.id}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{props.image.mime} · {formatBytes(props.image.size)} · {formatDate(props.image.createdAt)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{props.image.mime} · {formatBytes(props.image.size)} · {imageDimensionsLabel(props.image)} · {formatDate(props.image.createdAt)}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-3">
                 <Button variant="secondary" onClick={() => props.copy(props.image!, 'raw')}><Copy className="h-4 w-4" />直链</Button>
@@ -1804,6 +1807,8 @@ function Lightbox(props: {
               </div>
               <div className="grid gap-2 text-sm">
                 <InfoRow label="可见性" value={props.image.visibility === 'private' ? '私有' : '公开'} />
+                <InfoRow label="尺寸" value={imageDimensionsLabel(props.image)} />
+                <InfoRow label="SHA-256" value={props.image.sha256 || '-'} />
                 <InfoRow label="来源" value={props.image.source || '-'} />
                 <InfoRow label="存储" value={props.image.storageDriver || '-'} />
               </div>
@@ -1868,7 +1873,7 @@ function AlbumsView(props: {
             {props.albums.map((album) => (
               <button key={album.id} className={cn('flex w-full items-center gap-3 rounded-md border p-2 text-left text-sm', props.activeAlbumId === album.id ? 'border-primary bg-primary/5' : 'border-border bg-card')} onClick={() => props.setActiveAlbumId(album.id)}>
                 {album.coverImage ? (
-                  <img className="h-12 w-12 rounded-md bg-muted object-cover" src={album.coverImage.rawUrl} alt="" />
+                  <ImagePreview className="h-12 w-12 rounded-md bg-muted object-cover" src={album.coverImage.thumbUrl || album.coverImage.rawUrl} alt="" />
                 ) : (
                   <span className="grid h-12 w-12 place-items-center rounded-md bg-muted text-xs text-muted-foreground">空</span>
                 )}
@@ -1923,10 +1928,11 @@ function AlbumsView(props: {
                     onDragEnd={() => setDraggingId('')}
                   >
                     <button className="relative block w-full overflow-hidden rounded bg-muted" onClick={() => props.setCover(image.id)}>
-                      <img className="h-44 w-full object-cover transition group-hover:scale-105" src={image.rawUrl} alt="" />
+                      <ImagePreview className="h-44 w-full object-cover transition group-hover:scale-105" src={image.thumbUrl || image.rawUrl} alt="" />
                       {props.activeAlbum?.coverImageId === image.id && <Badge className="absolute left-2 top-2" tone="success">封面</Badge>}
                     </button>
                     <strong className="mt-2 block truncate text-sm">{image.originalName || image.id}</strong>
+                    <p className="text-xs text-muted-foreground">{formatBytes(image.size)} · {imageDimensionsLabel(image)}</p>
                     <div className="mt-2 flex flex-wrap gap-1">
                       <Button size="sm" variant="secondary" onClick={() => props.setCover(image.id)}>封面</Button>
                       <Button size="sm" variant="secondary" onClick={() => props.reorder(image.id, 'up')}>上移</Button>
@@ -2114,10 +2120,10 @@ function TrashView(props: { items: TrashItem[]; restore: (id: string) => void; r
         <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           {props.items.map((item) => (
             <div key={item.id} className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-              <img className="h-40 w-full bg-muted object-cover" src={item.rawUrl} alt="" />
+              <ImagePreview className="h-40 w-full bg-muted object-cover" src={item.thumbUrl || item.rawUrl} alt="" />
               <div className="space-y-2 p-3">
                 <strong className="block truncate text-sm">{item.originalName || item.id}</strong>
-                <p className="text-xs text-muted-foreground">{formatBytes(item.size)} · 删除于 {formatDate(item.deletedAt)}</p>
+                <p className="text-xs text-muted-foreground">{formatBytes(item.size)} · {imageDimensionsLabel(item)} · 删除于 {formatDate(item.deletedAt)}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <Button size="sm" variant="secondary" onClick={() => props.restore(item.id)}>恢复</Button>
                   <Button size="sm" variant="danger" onClick={() => props.remove(item.id)}>彻底删除</Button>
@@ -2256,6 +2262,10 @@ function SystemView({
 }) {
   const [eventQuery, setEventQuery] = useState('');
   const [eventType, setEventType] = useState('');
+  const warnings = Array.isArray(status?.warnings) ? status.warnings as string[] : [];
+  const memory = status?.memory as Record<string, number> | undefined;
+  const checks = status?.checks as Record<string, boolean> | undefined;
+  const rateLimit = status?.rateLimit as Record<string, number> | undefined;
   const filteredEvents = useMemo(() => {
     const q = eventQuery.trim().toLowerCase();
     const type = eventType.trim().toLowerCase();
@@ -2281,7 +2291,17 @@ function SystemView({
           <CardTitle>系统配置</CardTitle>
           <Button variant="secondary" onClick={refresh}>刷新</Button>
         </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
+        <CardContent className="grid gap-3 text-sm">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <StatusTile label="就绪状态" value={status?.ok ? 'Ready' : 'Degraded'} tone={status?.ok ? 'success' : 'warning'} />
+            <StatusTile label="配置警告" value={`${warnings.length} 条`} tone={warnings.length ? 'warning' : 'success'} />
+            <StatusTile label="限流桶" value={`${rateLimit?.buckets ?? 0}`} tone="info" />
+          </div>
+          {warnings.length > 0 && (
+            <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {warnings.map((warning) => <span key={warning}>{warning}</span>)}
+            </div>
+          )}
           {config && Object.entries({
             版本: `${config.appName} ${config.appVersion}`,
             Node: config.nodeVersion,
@@ -2296,7 +2316,21 @@ function SystemView({
       </Card>
       <Card>
         <CardHeader><CardTitle>运行状态</CardTitle></CardHeader>
-        <CardContent><StatusJson data={status} /></CardContent>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <StatusTile label="运行时间" value={`${Math.round(Number(status?.uptimeSeconds || 0) / 60)} 分钟`} tone="info" />
+            <StatusTile label="RSS 内存" value={formatBytes(memory?.rss || 0)} tone="info" />
+            <StatusTile label="堆内存" value={`${formatBytes(memory?.heapUsed || 0)} / ${formatBytes(memory?.heapTotal || 0)}`} tone="info" />
+          </div>
+          {checks && (
+            <div className="grid gap-2 sm:grid-cols-3">
+              {Object.entries(checks).map(([label, ok]) => (
+                <StatusTile key={label} label={label} value={ok ? '通过' : '异常'} tone={ok ? 'success' : 'danger'} />
+              ))}
+            </div>
+          )}
+          <StatusJson data={status} />
+        </CardContent>
       </Card>
       <Card className="xl:col-span-2">
         <CardHeader>
@@ -2471,6 +2505,30 @@ function StatusJson({ data }: { data: unknown }) {
   return <pre className="max-h-80 overflow-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100 scrollbar-thin">{JSON.stringify(data || {}, null, 2)}</pre>;
 }
 
+function ImagePreview({ className, src, alt }: { className?: string; src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className={cn('relative block overflow-hidden bg-muted', className)}>
+      {!loaded && !failed && <span className="absolute inset-0 animate-pulse bg-muted" />}
+      {failed ? (
+        <span className="absolute inset-0 grid place-items-center text-muted-foreground">
+          <ImageIcon className="h-5 w-5" />
+        </span>
+      ) : (
+        <img
+          className="h-full w-full object-inherit"
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
+
 function linkFor(image: ImageRecord, format: string, token: string) {
   const raw = previewRawUrl(image, token);
   const page = previewPageUrl(image, token);
@@ -2487,9 +2545,19 @@ function previewRawUrl(image: ImageRecord, token: string) {
   return withAccessToken(image.rawUrl, token);
 }
 
+function previewThumbUrl(image: ImageRecord, token: string) {
+  const thumb = image.thumbUrl || image.rawUrl;
+  if (image.visibility !== 'private' || !token) return thumb;
+  return withAccessToken(thumb, token);
+}
+
 function previewPageUrl(image: ImageRecord, token: string) {
   if (image.visibility !== 'private' || !token) return image.url;
   return withAccessToken(image.url, token);
+}
+
+function imageDimensionsLabel(image: ImageRecord) {
+  return image.width && image.height ? `${image.width} x ${image.height}` : '未知尺寸';
 }
 
 function withAccessToken(url: string, token: string) {

@@ -54,9 +54,10 @@ function configWarnings(config) {
 function healthPayload(config, db, settings, bootAt) {
   const dataDirWritable = canWriteDirectory(config.dataDir);
   const uploadDirWritable = config.storageDriver === 'local' ? canWriteDirectory(config.uploadDir) : true;
+  const thumbDirWritable = canWriteDirectory(config.thumbDir);
   const dbReady = dbReadyCheck(config);
   const warnings = configWarnings(config);
-  const ok = dataDirWritable && uploadDirWritable && dbReady.ok && warnings.every((warning) => !warning.includes('not supported') && !warning.includes('must be'));
+  const ok = dataDirWritable && uploadDirWritable && thumbDirWritable && dbReady.ok && warnings.every((warning) => !warning.includes('not supported') && !warning.includes('must be'));
   return {
     ok,
     status: ok ? 'ok' : 'degraded',
@@ -68,6 +69,7 @@ function healthPayload(config, db, settings, bootAt) {
     checks: {
       dataDirWritable,
       uploadDirWritable,
+      thumbDirWritable,
       database: dbReady.ok
     },
     warnings

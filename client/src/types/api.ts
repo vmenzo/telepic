@@ -7,6 +7,8 @@ export interface ImageRecord {
   originalName?: string;
   mime: string;
   size: number;
+  width?: number;
+  height?: number;
   sha256?: string;
   source?: string;
   owner?: string;
@@ -16,6 +18,7 @@ export interface ImageRecord {
   updatedAt?: string;
   url: string;
   rawUrl: string;
+  thumbUrl?: string;
   storageDriver?: StorageDriver;
 }
 

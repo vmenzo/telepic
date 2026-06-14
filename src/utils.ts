@@ -108,6 +108,86 @@ function detectImageMime(buffer) {
   return mimeFromBuffer(buffer);
 }
 
+function imageDimensions(buffer, mime = '') {
+  const kind = cleanMime(mime) || detectImageMime(buffer);
+  if (!Buffer.isBuffer(buffer) || buffer.length < 10) return { width: 0, height: 0 };
+  if (kind === 'image/png' && buffer.length >= 24) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (kind === 'image/gif' && buffer.length >= 10) {
+    return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+  }
+  if (kind === 'image/jpeg') return jpegDimensions(buffer);
+  if (kind === 'image/webp') return webpDimensions(buffer);
+  if (kind === 'image/avif' || kind.startsWith('image/heif') || kind.startsWith('image/heic')) return isoBmffDimensions(buffer);
+  return { width: 0, height: 0 };
+}
+
+function jpegDimensions(buffer) {
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) break;
+    const marker = buffer[offset + 1];
+    const length = buffer.readUInt16BE(offset + 2);
+    if (length < 2) break;
+    if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+      return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+    }
+    offset += 2 + length;
+  }
+  return { width: 0, height: 0 };
+}
+
+function webpDimensions(buffer) {
+  if (buffer.length < 30 || buffer.slice(0, 4).toString('ascii') !== 'RIFF' || buffer.slice(8, 12).toString('ascii') !== 'WEBP') {
+    return { width: 0, height: 0 };
+  }
+  const type = buffer.slice(12, 16).toString('ascii');
+  if (type === 'VP8 ' && buffer.length >= 30) {
+    return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+  }
+  if (type === 'VP8L' && buffer.length >= 25) {
+    const bits = buffer.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  if (type === 'VP8X' && buffer.length >= 30) {
+    return { width: readUInt24LE(buffer, 24) + 1, height: readUInt24LE(buffer, 27) + 1 };
+  }
+  return { width: 0, height: 0 };
+}
+
+function isoBmffDimensions(buffer) {
+  const box = findBox(buffer, ['meta', 'iprp', 'ipco', 'ispe']);
+  if (!box || box.start + 12 > box.end) return { width: 0, height: 0 };
+  return { width: buffer.readUInt32BE(box.start + 4), height: buffer.readUInt32BE(box.start + 8) };
+}
+
+function findBox(buffer, path, start = 0, end = buffer.length) {
+  let offset = start;
+  while (offset + 8 <= end) {
+    let size = buffer.readUInt32BE(offset);
+    const type = buffer.slice(offset + 4, offset + 8).toString('ascii');
+    let headerSize = 8;
+    if (size === 1 && offset + 16 <= end) {
+      size = Number(buffer.readBigUInt64BE(offset + 8));
+      headerSize = 16;
+    }
+    if (!size || offset + size > end || size < headerSize) break;
+    const contentStart = offset + headerSize + (type === 'meta' ? 4 : 0);
+    const contentEnd = offset + size;
+    if (type === path[0]) {
+      if (path.length === 1) return { start: contentStart, end: contentEnd };
+      return findBox(buffer, path.slice(1), contentStart, contentEnd);
+    }
+    offset += size;
+  }
+  return null;
+}
+
+function readUInt24LE(buffer, offset) {
+  return buffer[offset] + (buffer[offset + 1] << 8) + (buffer[offset + 2] << 16);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -154,6 +234,7 @@ export {
   detectImageMime,
   escapeHtml,
   extensionForMime,
+  imageDimensions,
   isImageMime,
   json,
   mimeFromBuffer,

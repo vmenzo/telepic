@@ -55,6 +55,7 @@ const config = {
   databaseDriver: process.env.DATABASE_DRIVER || 'sqlite',
   databaseFile,
   uploadDir: path.join(dataDir, 'uploads'),
+  thumbDir: path.resolve(rootDir, process.env.THUMB_DIR || path.join(dataDir, 'thumbs')),
   storageDriver: process.env.STORAGE_DRIVER || 'local',
   s3Bucket: process.env.S3_BUCKET || '',
   s3Region: process.env.S3_REGION || 'auto',
@@ -81,6 +82,8 @@ const config = {
   telegramAllowedUserIds: csv(process.env.TELEGRAM_ALLOWED_USER_IDS),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024),
   remoteFetchTimeoutMs: Number(process.env.REMOTE_FETCH_TIMEOUT_MS || 12_000),
+  thumbSize: Number(process.env.THUMB_SIZE || 512),
+  thumbQuality: Number(process.env.THUMB_QUALITY || 78),
   allowSvgUploads: bool(process.env.ALLOW_SVG_UPLOADS, false)
 };
 

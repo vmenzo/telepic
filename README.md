@@ -181,6 +181,12 @@ sh scripts/restore.sh /opt/telepic/backups/telepic-backup-YYYYmmdd-HHMMSS.tar.gz
 docker compose restart
 ```
 
+回填旧图片元数据：
+
+```bash
+npm run backfill:metadata
+```
+
 如果你想在 Linux 机器上先做一轮部署自检，再决定是否上线：
 
 ```bash
@@ -350,6 +356,7 @@ curl -X POST \
 | `DATA_DIR` | 数据目录 |
 | `DATABASE_DRIVER` | `sqlite` 或 `json` |
 | `DATABASE_FILE` | SQLite 文件路径 |
+| `THUMB_DIR` | 缩略图缓存目录 |
 | `STORAGE_DRIVER` | `local` 或 `s3` |
 | `ADMIN_USERNAME` | Web 管理台用户名 |
 | `ADMIN_PASSWORD` | Web 管理台密码 |
@@ -365,6 +372,8 @@ curl -X POST \
 | `TELEGRAM_ALLOWED_USER_IDS` | 允许使用 Bot 的 Telegram 用户 ID |
 | `MAX_UPLOAD_BYTES` | 单文件大小限制 |
 | `REMOTE_FETCH_TIMEOUT_MS` | URL 抓图下载超时 |
+| `THUMB_SIZE` | 缩略图最大边尺寸 |
+| `THUMB_QUALITY` | WebP 缩略图质量 |
 | `ALLOW_SVG_UPLOADS` | 是否允许 SVG 上传，默认关闭 |
 | `S3_BUCKET` | S3 bucket |
 | `S3_REGION` | S3 区域 |

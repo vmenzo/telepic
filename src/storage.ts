@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { extensionForMime, now, randomId, sha256 } from './utils';
+import { extensionForMime, imageDimensions, now, randomId, sha256 } from './utils';
 
 function createStorage(config) {
   if (config.storageDriver === 's3') {
@@ -217,6 +217,7 @@ function createImageRecord({ buffer, mime, originalName, source, owner, prefix =
   const extension = extensionForMime(mime);
   const fileName = `${id}.${extension}`;
   const storageKey = prefix ? `${prefix}/${fileName}` : fileName;
+  const dimensions = imageDimensions(buffer, mime);
   return {
     id,
     fileName,
@@ -225,6 +226,8 @@ function createImageRecord({ buffer, mime, originalName, source, owner, prefix =
     originalName: originalName || fileName,
     mime,
     size: buffer.length,
+    width: dimensions.width || 0,
+    height: dimensions.height || 0,
     sha256: sha256(buffer),
     source: source || 'api',
     owner: owner || null,

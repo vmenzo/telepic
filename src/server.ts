@@ -3,6 +3,7 @@ import dns from 'dns/promises';
 import net from 'net';
 import path from 'path';
 import fastify from 'fastify';
+import sharp from 'sharp';
 
 import config from './config';
 import { bearerToken, createAdminSession, hashPassword, refreshAdminSession, requireAdmin, requireDelete, requireManage, requireRead, requireUpload, sha256Text, verifyAdminLogin, verifyAdminSession } from './auth';
@@ -23,6 +24,7 @@ const bootAt = Date.now();
 
 db.load();
 storage.ensure();
+fs.mkdirSync(config.thumbDir, { recursive: true });
 
 const publicDir = path.join(config.rootDir, 'public');
 
@@ -107,6 +109,10 @@ async function route(req, res) {
 
   if (req.method === 'GET' && pathname.startsWith('/raw/')) {
     return serveImageFile(req, res, pathname.split('/')[2]);
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/thumb/')) {
+    return serveImageFile(req, res, pathname.split('/')[2], { thumbnail: true });
   }
 
   if (req.method === 'GET' && pathname.startsWith('/i/')) {
@@ -445,6 +451,7 @@ async function route(req, res) {
       databaseDriver: config.databaseDriver,
       databaseFile: admin ? config.databaseFile : '',
       dataDir: admin ? config.dataDir : '',
+      thumbDir: admin ? config.thumbDir : '',
       telegramEnabled: Boolean(config.telegramBotToken),
       telegramBotConfigured: Boolean(config.telegramBotToken),
       telegramAllowedUsersConfigured: config.telegramAllowedUserIds.length > 0,
@@ -892,6 +899,8 @@ function publicImage(image) {
     originalName: image.originalName,
     mime: image.mime,
     size: image.size,
+    width: image.width || 0,
+    height: image.height || 0,
     sha256: image.sha256,
     source: image.source,
     owner: image.owner,
@@ -903,12 +912,13 @@ function publicImage(image) {
     createdAt: image.createdAt,
     updatedAt: image.updatedAt,
     url: image.url || `${config.publicUrl}/i/${image.id}`,
+    thumbUrl: `${config.publicUrl}/thumb/${image.id}`,
     rawUrl: image.visibility === 'private' ? fallbackRawUrl : (storageRawUrl || fallbackRawUrl),
     appRawUrl: fallbackRawUrl
   };
 }
 
-async function serveImageFile(req, res, id) {
+async function serveImageFile(req, res, id, options: { thumbnail?: boolean } = {}) {
   const image = db.getImage(id);
   if (!image) return json(res, 404, { error: 'Image not found' });
   const url = new URL(req.url, config.publicUrl);
@@ -918,13 +928,15 @@ async function serveImageFile(req, res, id) {
   let stored;
   try {
     stored = await storageForImage(image).read(image);
+    if (options.thumbnail) stored = await thumbnailForImage(image, stored);
   } catch (error) {
     const status = /404/.test(String(error.message)) ? 404 : 502;
     return json(res, status, { error: status === 404 ? 'Image file missing' : error.message });
   }
   res.writeHead(200, {
     'content-type': stored.mime || image.mime,
-    'cache-control': 'public, max-age=31536000, immutable',
+    'cache-control': options.thumbnail ? 'public, max-age=86400' : 'public, max-age=31536000, immutable',
+    ...(options.thumbnail ? { 'x-telepic-thumbnail': stored.thumbnailGenerated ? 'generated' : 'source' } : {}),
     ...rawImageSecurityHeaders(stored.mime || image.mime)
   });
   res.end(stored.buffer);
@@ -968,6 +980,44 @@ function rawImageSecurityHeaders(mime) {
     'content-security-policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
     'content-disposition': 'inline'
   };
+}
+
+async function thumbnailForImage(image, stored) {
+  if (!shouldGenerateThumbnail(image, stored)) return stored;
+  const filePath = thumbnailPath(image);
+  try {
+    if (fs.existsSync(filePath)) {
+      return {
+        buffer: fs.readFileSync(filePath),
+        mime: 'image/webp',
+        thumbnailGenerated: true
+      };
+    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const size = clamp(Number(config.thumbSize || 512), 64, 2048);
+    const quality = clamp(Number(config.thumbQuality || 78), 35, 95);
+    const buffer = await sharp(stored.buffer, { animated: false, failOn: 'none', limitInputPixels: 80_000_000 })
+      .rotate()
+      .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality })
+      .toBuffer();
+    fs.writeFileSync(filePath, buffer);
+    return { buffer, mime: 'image/webp', thumbnailGenerated: true };
+  } catch (error) {
+    console.warn('Thumbnail generation failed', { imageId: image.id, message: error.message });
+    return stored;
+  }
+}
+
+function shouldGenerateThumbnail(image, stored) {
+  const mime = cleanMime(stored.mime || image.mime);
+  if (mime === 'image/svg+xml' || mime === 'image/gif') return false;
+  return ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'].includes(mime);
+}
+
+function thumbnailPath(image) {
+  const key = `${image.sha256 || image.id}-${config.thumbSize || 512}-${config.thumbQuality || 78}.webp`;
+  return path.join(config.thumbDir, key.slice(0, 2), key);
 }
 
 function sendHtml(res, body) {
@@ -1552,6 +1602,7 @@ function systemStatusPayload() {
     platform: `${process.platform}/${process.arch}`,
     dataDir: config.dataDir,
     uploadDir: config.uploadDir,
+    thumbDir: config.thumbDir,
     databaseDriver: config.databaseDriver,
     storageDriver: config.storageDriver,
     imageCount: db.stats().images,

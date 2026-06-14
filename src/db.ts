@@ -151,6 +151,8 @@ class JsonDb {
     if (!hash) return null;
     return this.state.images.find((image) => image.sha256 === hash && !image.deletedAt) || null;
   }
+
+  close() {}
 }
 
 class SqliteDb {
@@ -392,6 +394,12 @@ class SqliteDb {
     if (!hash) return null;
     const row = this.db.prepare('SELECT * FROM images WHERE sha256 = ? ORDER BY created_at DESC LIMIT 1').get(hash);
     return row ? rowToImage(row) : null;
+  }
+
+  close() {
+    if (!this.db) return;
+    this.db.close();
+    this.db = null;
   }
 }
 

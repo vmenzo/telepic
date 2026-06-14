@@ -104,6 +104,10 @@ function normalizeImageMime(mime, filename, buffer) {
   return mimeFromBuffer(buffer) || mimeFromFileName(filename) || cleaned || 'application/octet-stream';
 }
 
+function detectImageMime(buffer) {
+  return mimeFromBuffer(buffer);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -147,6 +151,7 @@ function readBody(req, maxBytes) {
 
 export {
   cleanMime,
+  detectImageMime,
   escapeHtml,
   extensionForMime,
   isImageMime,

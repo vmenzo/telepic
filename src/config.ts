@@ -79,7 +79,9 @@ const config = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || 'change-me-webhook-secret',
   telegramAllowedUserIds: csv(process.env.TELEGRAM_ALLOWED_USER_IDS),
-  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024)
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024),
+  remoteFetchTimeoutMs: Number(process.env.REMOTE_FETCH_TIMEOUT_MS || 12_000),
+  allowSvgUploads: bool(process.env.ALLOW_SVG_UPLOADS, false)
 };
 
 export default config;

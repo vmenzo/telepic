@@ -167,6 +167,8 @@ docker compose down
 健康检查：
 
 ```bash
+curl http://127.0.0.1:8787/livez
+curl http://127.0.0.1:8787/readyz
 curl http://127.0.0.1:8787/healthz
 ```
 
@@ -362,6 +364,8 @@ curl -X POST \
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook 路径密钥 |
 | `TELEGRAM_ALLOWED_USER_IDS` | 允许使用 Bot 的 Telegram 用户 ID |
 | `MAX_UPLOAD_BYTES` | 单文件大小限制 |
+| `REMOTE_FETCH_TIMEOUT_MS` | URL 抓图下载超时 |
+| `ALLOW_SVG_UPLOADS` | 是否允许 SVG 上传，默认关闭 |
 | `S3_BUCKET` | S3 bucket |
 | `S3_REGION` | S3 区域 |
 | `S3_ENDPOINT` | S3 endpoint |

@@ -8,11 +8,13 @@ import config from './config';
 import { bearerToken, createAdminSession, hashPassword, refreshAdminSession, requireAdmin, requireDelete, requireManage, requireRead, requireUpload, sha256Text, verifyAdminLogin, verifyAdminSession } from './auth';
 import { createDb } from './db';
 import { parseMultipartRequest } from './multipart';
+import { checkRateLimit, rateLimitStats } from './rate-limit';
+import { configWarnings, healthPayload } from './runtime-health';
 import { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, settingsPath, writeSettings } from './settings';
 import { createStorage } from './storage';
 import { handleTelegramUpdate, registerTelegramBotCommands, telegramAllowedUpdates, telegramApi } from './telegram';
 import { albumPage, htmlPage, iconSvg, imagePage } from './web';
-import { cleanMime, isImageMime, json, normalizeImageMime, parseJsonBody, randomId, readBody, sha256, text } from './utils';
+import { cleanMime, detectImageMime, isImageMime, json, parseJsonBody, randomId, readBody, sha256, text } from './utils';
 import packageJson from '../package.json';
 
 const db = createDb(config);
@@ -42,15 +44,16 @@ app.route({
   handler: async (request, reply) => {
     const req = request.raw as any;
     const res = reply.raw;
+    req.requestId = request.id;
     if (Buffer.isBuffer(request.body)) req.__bodyBuffer = request.body;
     reply.hijack();
     try {
       await route(req, res);
     } catch (error) {
-      const status = error.statusCode || 500;
+      const status = error.statusCode || (error instanceof SyntaxError ? 400 : 500);
       if (status >= 500) request.log.error(error);
       if (!res.headersSent) {
-        json(res, status, { error: error.message || 'Internal server error' });
+        json(res, status, { error: status === 400 && error instanceof SyntaxError ? 'Invalid JSON payload.' : (error.message || 'Internal server error'), requestId: req.requestId });
       } else {
         res.end();
       }
@@ -59,7 +62,9 @@ app.route({
 });
 
 async function route(req, res) {
+  setSecurityHeaders(req, res);
   refreshSessionHeader(req, res);
+  if (applyRateLimit(req, res)) return;
   const url = new URL(req.url, config.publicUrl);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -67,16 +72,25 @@ async function route(req, res) {
     return sendHtml(res, htmlPage(config));
   }
 
-  if (req.method === 'GET' && pathname === '/healthz') {
-    const settings = readSettings(config);
+  if (req.method === 'GET' && pathname === '/livez') {
     return json(res, 200, {
       ok: true,
+      status: 'alive',
       uptimeSeconds: Math.floor((Date.now() - bootAt) / 1000),
-      storageDriver: config.storageDriver,
-      databaseDriver: config.databaseDriver,
-      imageCount: db.stats().images,
-      recycleCount: ensureRecycleBin(settings).length
+      requestId: req.requestId
     });
+  }
+
+  if (req.method === 'GET' && pathname === '/readyz') {
+    const settings = readSettings(config);
+    const payload = healthPayload(config, db, settings, bootAt);
+    return json(res, payload.ok ? 200 : 503, { ...payload, requestId: req.requestId });
+  }
+
+  if (req.method === 'GET' && pathname === '/healthz') {
+    const settings = readSettings(config);
+    const payload = healthPayload(config, db, settings, bootAt);
+    return json(res, payload.ok ? 200 : 503, { ...payload, requestId: req.requestId });
   }
 
   if (req.method === 'GET' && pathname === '/favicon.ico') {
@@ -762,13 +776,14 @@ async function uploadFromRequest(req, actor, storageDriver = config.storageDrive
     throw error;
   }
 
-  file.mime = normalizeImageMime(file.mime, file.filename, file.data);
+  file.mime = detectImageMime(file.data);
 
   if (!isImageMime(file.mime)) {
-    const error = new Error(`Unsupported image type: ${file.mime || 'unknown'}`);
+    const error = new Error('Unsupported image type. Upload a real image file.');
     error.statusCode = 415;
     throw error;
   }
+  assertAllowedImageMime(file.mime);
 
   const fileHash = sha256(file.data);
   const duplicate = db.findImageBySha256(fileHash);
@@ -815,10 +830,7 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
   }
   await assertPublicRemoteUrl(parsed);
 
-  const response = await fetch(parsed, {
-    redirect: 'follow',
-    headers: { 'user-agent': 'Telepic/0.1' }
-  });
+  const response = await fetchRemoteImage(parsed);
 
   if (!response.ok) {
     const error = new Error(`Remote download failed: ${response.status}`);
@@ -842,12 +854,13 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
   }
 
   const fileName = decodeURIComponent(parsed.pathname.split('/').pop() || 'remote-image');
-  const mime = normalizeImageMime(responseMime, fileName, buffer);
+  const mime = detectImageMime(buffer);
   if (!isImageMime(mime)) {
-    const error = new Error(`Remote file is not a supported image: ${mime || 'unknown'}`);
+    const error = new Error('Remote file is not a supported image.');
     error.statusCode = 415;
     throw error;
   }
+  assertAllowedImageMime(mime);
 
   const fileHash = sha256(buffer);
   const duplicate = db.findImageBySha256(fileHash);
@@ -911,7 +924,8 @@ async function serveImageFile(req, res, id) {
   }
   res.writeHead(200, {
     'content-type': stored.mime || image.mime,
-    'cache-control': 'public, max-age=31536000, immutable'
+    'cache-control': 'public, max-age=31536000, immutable',
+    ...rawImageSecurityHeaders(stored.mime || image.mime)
   });
   res.end(stored.buffer);
 }
@@ -941,9 +955,79 @@ function staticMime(ext) {
   return 'application/octet-stream';
 }
 
+function assertAllowedImageMime(mime) {
+  if (cleanMime(mime) !== 'image/svg+xml' || config.allowSvgUploads) return;
+  const error = new Error('SVG uploads are disabled by default for security. Set ALLOW_SVG_UPLOADS=true to allow them.');
+  error.statusCode = 415;
+  throw error;
+}
+
+function rawImageSecurityHeaders(mime) {
+  if (cleanMime(mime) !== 'image/svg+xml') return {};
+  return {
+    'content-security-policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+    'content-disposition': 'inline'
+  };
+}
+
 function sendHtml(res, body) {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(body);
+}
+
+function setSecurityHeaders(req, res) {
+  if (req.requestId) res.setHeader('x-request-id', req.requestId);
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('referrer-policy', 'same-origin');
+  res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  if (isHttpsRequest(req)) {
+    res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');
+  }
+}
+
+function isHttpsRequest(req) {
+  return req.socket?.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+}
+
+function applyRateLimit(req, res) {
+  const pathName = safeRequestPath(req);
+  const ip = clientRateLimitIp(req);
+  const token = bearerToken(req) || req.headers['x-api-token'] || req.headers['x-admin-token'] || '';
+  const credentialHash = token ? sha256(Buffer.from(String(token))).slice(0, 16) : '';
+  const key = credentialHash ? `${ip}:${credentialHash}` : ip;
+  const policy = rateLimitPolicy(req.method || 'GET', pathName);
+  if (!policy) return null;
+  const result = checkRateLimit(key, policy);
+  res.setHeader('x-ratelimit-limit', String(result.limit));
+  res.setHeader('x-ratelimit-remaining', String(result.remaining));
+  res.setHeader('x-ratelimit-reset', new Date(result.resetAt).toISOString());
+  if (result.ok) return false;
+  const retryAfter = Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
+  res.setHeader('retry-after', String(retryAfter));
+  json(res, 429, { error: 'Too many requests. Please retry later.', retryAfterSeconds: retryAfter });
+  return true;
+}
+
+function rateLimitPolicy(method, pathName) {
+  if (method === 'POST' && pathName === '/api/login') return { windowMs: 60_000, max: 8, keyPrefix: 'login' };
+  if (method === 'POST' && (pathName === '/api/upload' || pathName === '/api/upload-from-url')) return { windowMs: 60_000, max: 30, keyPrefix: 'upload' };
+  if (pathName.startsWith('/telegram/')) return { windowMs: 60_000, max: 180, keyPrefix: 'telegram' };
+  if (pathName.startsWith('/api/')) return { windowMs: 60_000, max: 240, keyPrefix: 'api' };
+  return null;
+}
+
+function safeRequestPath(req) {
+  try {
+    return new URL(req.url || '/', config.publicUrl).pathname;
+  } catch {
+    return '/';
+  }
+}
+
+function clientRateLimitIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket?.remoteAddress || 'unknown';
 }
 
 function clamp(value, min, max) {
@@ -1365,6 +1449,49 @@ async function assertPublicRemoteUrl(parsed) {
   }
 }
 
+async function fetchRemoteImage(initialUrl, redirects = 0) {
+  if (redirects > 5) {
+    const error = new Error('Remote URL redirected too many times.');
+    error.statusCode = 400;
+    throw error;
+  }
+  await assertPublicRemoteUrl(initialUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.remoteFetchTimeoutMs);
+  try {
+    const response = await fetch(initialUrl, {
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: { 'user-agent': 'Telepic/0.1' }
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location') || '';
+      if (!location) {
+        const error = new Error('Remote URL returned a redirect without a location.');
+        error.statusCode = 400;
+        throw error;
+      }
+      const nextUrl = new URL(location, initialUrl);
+      if (!['http:', 'https:'].includes(nextUrl.protocol)) {
+        const error = new Error('Remote URL redirected to an unsupported protocol.');
+        error.statusCode = 400;
+        throw error;
+      }
+      return fetchRemoteImage(nextUrl, redirects + 1);
+    }
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      const timeout = new Error('Remote download timed out.');
+      timeout.statusCode = 504;
+      throw timeout;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isPrivateAddress(address) {
   const family = net.isIP(address);
   if (family === 4) {
@@ -1416,8 +1543,9 @@ function storageConfigPayload() {
 function systemStatusPayload() {
   const memory = process.memoryUsage();
   const settings = readSettings(config);
+  const warnings = configWarnings(config);
   return {
-    ok: true,
+    ok: warnings.every((warning) => !warning.includes('not supported') && !warning.includes('must be')),
     uptimeSeconds: Math.floor((Date.now() - bootAt) / 1000),
     pid: process.pid,
     nodeVersion: process.version,
@@ -1435,6 +1563,8 @@ function systemStatusPayload() {
       heapUsed: memory.heapUsed,
       heapTotal: memory.heapTotal
     },
+    rateLimit: rateLimitStats(),
+    warnings,
     checks: {
       dataDirWritable: fs.existsSync(config.dataDir),
       uploadDirWritable: fs.existsSync(config.uploadDir),
@@ -1576,6 +1706,9 @@ async function start() {
   await app.listen({ port: config.port, host: config.host });
   console.log(`Telepic is running at http://${config.host}:${config.port}`);
   console.log(`Public URL: ${config.publicUrl}`);
+  for (const warning of configWarnings(config)) {
+    console.warn(`Config warning: ${warning}`);
+  }
   if (config.telegramBotToken) {
     registerTelegramBotCommands(config)
       .then((result) => {
@@ -1585,6 +1718,21 @@ async function start() {
       .catch((error) => console.warn(`Telegram bot command menu registration failed: ${error.message}`));
   }
 }
+
+async function shutdown(signal) {
+  try {
+    console.log(`Received ${signal}, shutting down Telepic...`);
+    await app.close();
+    if (typeof db.close === 'function') db.close();
+    process.exit(0);
+  } catch (error) {
+    app.log.error(error);
+    process.exit(1);
+  }
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 start().catch((error) => {
   app.log.error(error);

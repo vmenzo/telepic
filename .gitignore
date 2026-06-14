@@ -1,8 +1,10 @@
 data/
+dist/
 uploads/
 .env
 *.log
 node_modules/
+*.tsbuildinfo
 work/
 tools/
 outputs/

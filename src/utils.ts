@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 const MIME_EXTENSIONS = {
   'image/jpeg': 'jpg',
@@ -121,6 +121,13 @@ function parseJsonBody(req, maxBytes) {
 }
 
 function readBody(req, maxBytes) {
+  if (Buffer.isBuffer(req.__bodyBuffer)) {
+    if (req.__bodyBuffer.length > maxBytes) {
+      return Promise.reject(Object.assign(new Error('Payload too large'), { statusCode: 413 }));
+    }
+    return Promise.resolve(req.__bodyBuffer);
+  }
+
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -138,7 +145,7 @@ function readBody(req, maxBytes) {
   });
 }
 
-module.exports = {
+export {
   cleanMime,
   escapeHtml,
   extensionForMime,

@@ -1,18 +1,19 @@
-const fs = require('fs');
-const http = require('http');
-const path = require('path');
-const { URL } = require('url');
+import fs from 'fs';
+import dns from 'dns/promises';
+import net from 'net';
+import path from 'path';
+import fastify from 'fastify';
 
-const config = require('./config');
-const { bearerToken, createAdminSession, refreshAdminSession, requireAdmin, requireManage, requireUpload, verifyAdminLogin, verifyAdminSession } = require('./auth');
-const { createDb } = require('./db');
-const { parseMultipartRequest } = require('./multipart');
-const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, settingsPath, writeSettings } = require('./settings');
-const { createStorage } = require('./storage');
-const { handleTelegramUpdate, registerTelegramBotCommands, telegramAllowedUpdates, telegramApi } = require('./telegram');
-const { htmlPage, imagePage } = require('./web');
-const { cleanMime, isImageMime, json, normalizeImageMime, parseJsonBody, readBody, text } = require('./utils');
-const packageJson = require('../package.json');
+import config from './config';
+import { bearerToken, createAdminSession, hashPassword, refreshAdminSession, requireAdmin, requireDelete, requireManage, requireRead, requireUpload, sha256Text, verifyAdminLogin, verifyAdminSession } from './auth';
+import { createDb } from './db';
+import { parseMultipartRequest } from './multipart';
+import { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, settingsPath, writeSettings } from './settings';
+import { createStorage } from './storage';
+import { handleTelegramUpdate, registerTelegramBotCommands, telegramAllowedUpdates, telegramApi } from './telegram';
+import { albumPage, htmlPage, iconSvg, imagePage } from './web';
+import { cleanMime, isImageMime, json, normalizeImageMime, parseJsonBody, randomId, readBody, sha256, text } from './utils';
+import packageJson from '../package.json';
 
 const db = createDb(config);
 let storage = createStorage(config);
@@ -23,12 +24,38 @@ storage.ensure();
 
 const publicDir = path.join(config.rootDir, 'public');
 
-const server = http.createServer((req, res) => {
-  route(req, res).catch((error) => {
-    const status = error.statusCode || 500;
-    if (status >= 500) console.error(error);
-    json(res, status, { error: error.message || 'Internal server error' });
-  });
+const app = fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || 'info'
+  },
+  bodyLimit: Math.max(config.maxUploadBytes, 3 * 1024 * 1024) + 1024 * 1024
+});
+
+app.removeAllContentTypeParsers();
+app.addContentTypeParser('*', { parseAs: 'buffer' }, (_request, body, done) => {
+  done(null, body);
+});
+
+app.route({
+  method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  url: '/*',
+  handler: async (request, reply) => {
+    const req = request.raw as any;
+    const res = reply.raw;
+    if (Buffer.isBuffer(request.body)) req.__bodyBuffer = request.body;
+    reply.hijack();
+    try {
+      await route(req, res);
+    } catch (error) {
+      const status = error.statusCode || 500;
+      if (status >= 500) request.log.error(error);
+      if (!res.headersSent) {
+        json(res, status, { error: error.message || 'Internal server error' });
+      } else {
+        res.end();
+      }
+    }
+  }
 });
 
 async function route(req, res) {
@@ -38,6 +65,26 @@ async function route(req, res) {
 
   if (req.method === 'GET' && pathname === '/') {
     return sendHtml(res, htmlPage(config));
+  }
+
+  if (req.method === 'GET' && pathname === '/healthz') {
+    const settings = readSettings(config);
+    return json(res, 200, {
+      ok: true,
+      uptimeSeconds: Math.floor((Date.now() - bootAt) / 1000),
+      storageDriver: config.storageDriver,
+      databaseDriver: config.databaseDriver,
+      imageCount: db.stats().images,
+      recycleCount: ensureRecycleBin(settings).length
+    });
+  }
+
+  if (req.method === 'GET' && pathname === '/favicon.ico') {
+    res.writeHead(200, {
+      'content-type': 'image/svg+xml; charset=utf-8',
+      'cache-control': 'public, max-age=31536000, immutable'
+    });
+    return res.end(iconSvg);
   }
 
   if (req.method === 'GET' && pathname.startsWith('/assets/')) {
@@ -55,6 +102,16 @@ async function route(req, res) {
       return json(res, 403, { error: 'Private image requires management permission' });
     }
     return sendHtml(res, imagePage(image, config, url.searchParams.get('token') || ''));
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/a/')) {
+    const settings = readSettings(config);
+    const album = findAlbum(settings, pathname.split('/')[2]);
+    if (!album) return json(res, 404, { error: 'Album not found' });
+    const images = applyAlbumOrdering((album.imageIds || []).map((id) => db.getImage(id)).filter(Boolean), album)
+      .filter((image) => image.visibility === 'public')
+      .map(publicImage);
+    return sendHtml(res, albumPage(publicAlbum({ ...album, imageCount: images.length }), images, config));
   }
 
   if (req.method === 'GET' && pathname === '/api/stats') {
@@ -140,11 +197,36 @@ async function route(req, res) {
     if (newPassword.length < 8 || newPassword.length > 200) {
       return json(res, 400, { error: 'New password must be between 8 and 200 characters' });
     }
-    updateEnvValue(config.envFile, 'ADMIN_PASSWORD', newPassword);
-    process.env.ADMIN_PASSWORD = newPassword;
-    config.adminPassword = newPassword;
+    const passwordHash = hashPassword(newPassword);
+    updateEnvValues(config.envFile, {
+      ADMIN_PASSWORD: '',
+      ADMIN_PASSWORD_HASH: passwordHash
+    });
+    process.env.ADMIN_PASSWORD = '';
+    process.env.ADMIN_PASSWORD_HASH = passwordHash;
+    config.adminPassword = '';
+    config.adminPasswordHash = passwordHash;
     db.addEvent('admin.password.updated', { actor: auth.actor });
     return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/token/rotate') {
+    const auth = requireManage(req, db, config);
+    if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
+    const token = `tp_admin_${randomId(32)}`;
+    const tokenHash = sha256Text(token);
+    updateEnvValues(config.envFile, {
+      ADMIN_TOKEN: '',
+      ADMIN_TOKEN_HASH: tokenHash,
+      ADMIN_SESSION_SECRET: config.adminSessionSecret || `tp_session_${randomId(32)}`
+    });
+    process.env.ADMIN_TOKEN = '';
+    process.env.ADMIN_TOKEN_HASH = tokenHash;
+    config.adminToken = '';
+    config.adminTokenHash = tokenHash;
+    if (!config.adminSessionSecret) config.adminSessionSecret = process.env.ADMIN_SESSION_SECRET;
+    db.addEvent('admin.token.rotated', { actor: auth.actor });
+    return json(res, 200, { ok: true, token });
   }
 
   if (req.method === 'GET' && pathname === '/api/images') {
@@ -207,7 +289,13 @@ async function route(req, res) {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const limit = clamp(Number(url.searchParams.get('limit') || 20), 1, 100);
-    return json(res, 200, { events: db.listEvents({ limit }) });
+    const q = String(url.searchParams.get('q') || '').toLowerCase();
+    const type = String(url.searchParams.get('type') || '').toLowerCase();
+    const events = db.listEvents({ limit: 100 })
+      .filter((event) => !type || String(event.type || '').toLowerCase().includes(type))
+      .filter((event) => !q || `${event.type} ${JSON.stringify(event.details || {})}`.toLowerCase().includes(q))
+      .slice(0, limit);
+    return json(res, 200, { events });
   }
 
   if (req.method === 'GET' && pathname === '/api/trash') {
@@ -230,7 +318,7 @@ async function route(req, res) {
     const id = pathname.split('/')[3];
     const image = db.getImage(id);
     if (!image) return json(res, 404, { error: 'Image not found' });
-    if (image.visibility === 'private' && !requireManage(req, db, config).ok) {
+    if (image.visibility === 'private' && !requireRead(req, db, config).ok) {
       return json(res, 403, { error: 'Private image metadata requires management permission' });
     }
     return json(res, 200, { image: publicImage(image) });
@@ -241,7 +329,7 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const id = pathname.split('/')[3];
     const body = await parseJsonBody(req, 64 * 1024);
-    const patch = {};
+    const patch: Record<string, unknown> = {};
     if (['public', 'private'].includes(body.visibility)) patch.visibility = body.visibility;
     if (typeof body.originalName === 'string') patch.originalName = body.originalName.slice(0, 200);
     if (Array.isArray(body.tags) || typeof body.tags === 'string') patch.tags = normalizeTags(body.tags);
@@ -251,7 +339,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'DELETE' && pathname.startsWith('/api/images/')) {
-    const auth = requireManage(req, db, config);
+    const auth = requireDelete(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const id = pathname.split('/')[3];
     const image = db.deleteImage(id);
@@ -261,7 +349,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'POST' && pathname === '/api/images/bulk-delete') {
-    const auth = requireManage(req, db, config);
+    const auth = requireDelete(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 256 * 1024);
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
@@ -284,7 +372,7 @@ async function route(req, res) {
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 256 * 1024);
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
-    const patch = {};
+    const patch: Record<string, unknown> = {};
     if (['public', 'private'].includes(body.visibility)) patch.visibility = body.visibility;
     if (Array.isArray(body.tags) || typeof body.tags === 'string') patch.tags = normalizeTags(body.tags);
     const updated = [];
@@ -301,7 +389,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'POST' && pathname === '/api/images/download') {
-    const auth = requireManage(req, db, config);
+    const auth = requireRead(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const body = await parseJsonBody(req, 256 * 1024);
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 100) : [];
@@ -384,28 +472,21 @@ async function route(req, res) {
       TELEGRAM_WEBHOOK_SECRET: config.telegramWebhookSecret,
       TELEGRAM_ALLOWED_USER_IDS: config.telegramAllowedUserIds.join(',')
     });
-    db.addEvent('integration.telegram.updated', { actor: auth.actor });
-    return json(res, 200, telegramConfigPayload());
+    let webhookSync: any = { ok: false, skipped: true, reason: 'Bot Token 未配置' };
+    if (config.telegramBotToken) {
+      webhookSync = await syncTelegramWebhook(auth.actor);
+    }
+    db.addEvent('integration.telegram.updated', { actor: auth.actor, webhookSynced: Boolean(webhookSync && webhookSync.ok) });
+    return json(res, 200, { ...telegramConfigPayload(), webhookSync });
   }
 
   if (req.method === 'POST' && pathname === '/api/integrations/telegram/webhook') {
     const auth = requireManage(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     if (!config.telegramBotToken) return json(res, 400, { error: 'Telegram bot token is not configured' });
-    const webhookUrl = `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`;
-    const result = await telegramApi(config, 'setWebhook', {
-      url: webhookUrl,
-      allowed_updates: telegramAllowedUpdates()
-    });
-    if (!result || !result.ok) {
-      return json(res, 502, { error: result && result.description ? result.description : 'Telegram webhook registration failed' });
-    }
-    const commands = await registerTelegramBotCommands(config);
-    if (!commands || !commands.ok) {
-      return json(res, 502, { error: commands && commands.description ? commands.description : 'Telegram command menu registration failed' });
-    }
-    db.addEvent('integration.telegram.webhook_registered', { actor: auth.actor, webhookUrl });
-    return json(res, 200, { ok: true, webhookUrl, telegram: result, commands });
+    const synced = await syncTelegramWebhook(auth.actor);
+    if (!synced.ok) return json(res, 502, { error: synced.error || 'Telegram webhook registration failed' });
+    return json(res, 200, synced);
   }
 
   if (req.method === 'POST' && pathname === '/api/integrations/telegram/test') {
@@ -512,7 +593,7 @@ async function route(req, res) {
   if (req.method === 'POST' && pathname === '/api/tokens') {
     if (!requireAdmin(req, config)) return json(res, 401, { error: 'Admin token required' });
     const body = await parseJsonBody(req, 64 * 1024);
-    const created = db.createToken({ name: body.name, scopes: body.scopes });
+    const created = db.createToken({ name: body.name, scopes: body.scopes, expiresAt: body.expiresAt });
     return json(res, 201, created);
   }
 
@@ -598,11 +679,19 @@ async function route(req, res) {
     const settings = readSettings(config);
     const album = findAlbum(settings, albumId);
     if (!album) return json(res, 404, { error: 'Album not found' });
-    reorderAlbumImages(album, String(body.imageId || ''), String(body.direction || ''));
+    if (Array.isArray(body.imageIds)) {
+      const known = new Set((album.imageIds || []).map(String));
+      const ordered = body.imageIds.map(String).filter((id) => known.has(id));
+      const remaining = (album.imageIds || []).map(String).filter((id) => !ordered.includes(id));
+      album.imageIds = [...ordered, ...remaining];
+      album.sortMode = 'manual';
+    } else {
+      reorderAlbumImages(album, String(body.imageId || ''), String(body.direction || ''));
+    }
     album.updatedAt = new Date().toISOString();
     settings.updatedAt = album.updatedAt;
     writeSettings(config, settings);
-    db.addEvent('album.reordered', { actor: auth.actor, albumId, imageId: body.imageId, direction: body.direction });
+    db.addEvent('album.reordered', { actor: auth.actor, albumId, imageId: body.imageId, direction: body.direction, count: Array.isArray(body.imageIds) ? body.imageIds.length : undefined });
     return json(res, 200, { album: publicAlbum(album) });
   }
 
@@ -615,7 +704,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'DELETE' && /^\/api\/trash\/[^/]+$/.test(pathname)) {
-    const auth = requireManage(req, db, config);
+    const auth = requireDelete(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const item = await permanentlyDeleteTrashItemWithEvent(pathname.split('/')[3], auth.actor);
     if (!item) return json(res, 404, { error: 'Recycle bin item not found' });
@@ -623,7 +712,7 @@ async function route(req, res) {
   }
 
   if (req.method === 'POST' && pathname === '/api/trash/empty') {
-    const auth = requireManage(req, db, config);
+    const auth = requireDelete(req, db, config);
     if (!auth.ok) return json(res, auth.statusCode, { error: auth.message });
     const settings = readSettings(config);
     const items = ensureRecycleBin(settings);
@@ -681,8 +770,15 @@ async function uploadFromRequest(req, actor, storageDriver = config.storageDrive
     throw error;
   }
 
+  const fileHash = sha256(file.data);
+  const duplicate = db.findImageBySha256(fileHash);
+  if (duplicate) {
+    db.addEvent('image.upload_deduplicated', { actor, existingId: duplicate.id, sha256: fileHash });
+    return duplicate;
+  }
+
   const targetStorage = storageForDriver(storageDriver);
-  const image = await targetStorage.saveImage({
+  const image: any = await targetStorage.saveImage({
     buffer: file.data,
     mime: file.mime,
     originalName: file.filename,
@@ -717,6 +813,7 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
     error.statusCode = 400;
     throw error;
   }
+  await assertPublicRemoteUrl(parsed);
 
   const response = await fetch(parsed, {
     redirect: 'follow',
@@ -752,8 +849,15 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
     throw error;
   }
 
+  const fileHash = sha256(buffer);
+  const duplicate = db.findImageBySha256(fileHash);
+  if (duplicate) {
+    db.addEvent('image.url_deduplicated', { actor, existingId: duplicate.id, sha256: fileHash, sourceUrl: parsed.origin + parsed.pathname });
+    return duplicate;
+  }
+
   const targetStorage = storageForDriver(storageDriver);
-  const image = await targetStorage.saveImage({
+  const image: any = await targetStorage.saveImage({
     buffer,
     mime,
     originalName: fileName,
@@ -768,7 +872,7 @@ async function uploadFromUrl(rawUrl, actor, storageDriver = config.storageDriver
 
 function publicImage(image) {
   const fallbackRawUrl = image.rawUrl || `${config.publicUrl}/raw/${image.id}`;
-  const imageStorage = storageForImage(image);
+  const imageStorage: any = storageForImage(image);
   const storageRawUrl = typeof imageStorage.getPublicObjectUrl === 'function' ? imageStorage.getPublicObjectUrl(image) : '';
   return {
     id: image.id,
@@ -813,13 +917,28 @@ async function serveImageFile(req, res, id) {
 }
 
 function serveStatic(res, name) {
-  const safeName = path.basename(name);
+  const safeName = path.normalize(name).replace(/^(\.\.[/\\])+/, '');
   const filePath = path.join(publicDir, safeName);
+  if (!filePath.startsWith(publicDir)) return text(res, 404, 'Not found');
   if (!fs.existsSync(filePath)) return text(res, 404, 'Not found');
   const ext = path.extname(filePath);
-  const mime = ext === '.css' ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
-  res.writeHead(200, { 'content-type': mime });
+  const mime = staticMime(ext);
+  res.writeHead(200, {
+    'content-type': mime,
+    'cache-control': 'public, max-age=31536000, immutable'
+  });
   fs.createReadStream(filePath).pipe(res);
+}
+
+function staticMime(ext) {
+  if (ext === '.css') return 'text/css; charset=utf-8';
+  if (ext === '.js' || ext === '.mjs') return 'application/javascript; charset=utf-8';
+  if (ext === '.svg') return 'image/svg+xml; charset=utf-8';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.woff2') return 'font/woff2';
+  return 'application/octet-stream';
 }
 
 function sendHtml(res, body) {
@@ -934,7 +1053,7 @@ function normalizeAlbumSortMode(value) {
 function applyAlbumOrdering(images, album) {
   const sortMode = normalizeAlbumSortMode(album.sortMode);
   if (sortMode === 'manual') {
-    const order = new Map((album.imageIds || []).map((id, index) => [String(id), index]));
+    const order = new Map<string, number>((album.imageIds || []).map((id, index) => [String(id), index]));
     return [...images].sort((a, b) => (order.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) - (order.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER));
   }
   if (sortMode === 'name') {
@@ -978,6 +1097,23 @@ async function telegramStatusPayload() {
     payload.error = error.message;
   }
   return payload;
+}
+
+async function syncTelegramWebhook(actor = 'admin') {
+  const webhookUrl = `${config.publicUrl}/telegram/${config.telegramWebhookSecret}`;
+  const result = await telegramApi(config, 'setWebhook', {
+    url: webhookUrl,
+    allowed_updates: telegramAllowedUpdates()
+  });
+  if (!result || !result.ok) {
+    return { ok: false, webhookUrl, error: result && result.description ? result.description : 'Telegram webhook registration failed', telegram: result };
+  }
+  const commands = await registerTelegramBotCommands(config);
+  if (!commands || !commands.ok) {
+    return { ok: false, webhookUrl, error: commands && commands.description ? commands.description : 'Telegram command menu registration failed', telegram: result, commands };
+  }
+  db.addEvent('integration.telegram.webhook_registered', { actor, webhookUrl });
+  return { ok: true, webhookUrl, telegram: result, commands };
 }
 
 async function storageStatusPayload() {
@@ -1216,6 +1352,41 @@ function assertUploadStorageReady(driver) {
   throw error;
 }
 
+async function assertPublicRemoteUrl(parsed) {
+  const host = parsed.hostname;
+  if (!host) throw Object.assign(new Error('Remote URL host is required.'), { statusCode: 400 });
+  const directFamily = net.isIP(host);
+  const addresses = directFamily ? [{ address: host, family: directFamily }] : await dns.lookup(host, { all: true, verbatim: false });
+  if (!addresses.length) throw Object.assign(new Error('Remote URL host could not be resolved.'), { statusCode: 400 });
+  for (const item of addresses) {
+    if (isPrivateAddress(item.address)) {
+      throw Object.assign(new Error('Remote URL resolves to a private or local address.'), { statusCode: 400 });
+    }
+  }
+}
+
+function isPrivateAddress(address) {
+  const family = net.isIP(address);
+  if (family === 4) {
+    const parts = address.split('.').map((part) => Number(part));
+    const [a, b] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a >= 224)
+    );
+  }
+  if (family === 6) {
+    const value = address.toLowerCase();
+    return value === '::1' || value === '::' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:') || value.startsWith('::ffff:127.') || value.startsWith('::ffff:10.') || value.startsWith('::ffff:192.168.');
+  }
+  return true;
+}
+
 function telegramConfigPayload() {
   return {
     ok: true,
@@ -1351,7 +1522,7 @@ function refreshSessionHeader(req, res) {
 
 function sanitizeTheme(theme) {
   const stringFields = ['id', 'preset', 'label', 'author', 'category', 'description', 'cover', 'bg', 'panel', 'ink', 'accent', 'danger', 'backdrop', 'overlay', 'image'];
-  const clean = {};
+  const clean: Record<string, unknown> = {};
   for (const field of stringFields) {
     if (typeof theme[field] === 'string') clean[field] = theme[field].slice(0, field === 'image' ? 2_800_000 : 4000);
   }
@@ -1388,20 +1559,21 @@ function decodeHeaderFileName(value) {
 }
 
 function hasManageAccess(req, url) {
-  if (requireManage(req, db, config).ok) return true;
+  if (requireRead(req, db, config).ok) return true;
   const queryToken = url.searchParams.get('token') || '';
   if (!queryToken) return false;
   if (config.adminToken && queryToken === config.adminToken) return true;
   if (verifyAdminSession(queryToken, config)) return true;
   const token = db.findToken(queryToken);
-  if (token && token.scopes.includes('manage')) {
+  if (token && (token.scopes.includes('read') || token.scopes.includes('manage'))) {
     db.touchToken(token.id);
     return true;
   }
   return false;
 }
 
-server.listen(config.port, config.host, () => {
+async function start() {
+  await app.listen({ port: config.port, host: config.host });
   console.log(`Telepic is running at http://${config.host}:${config.port}`);
   console.log(`Public URL: ${config.publicUrl}`);
   if (config.telegramBotToken) {
@@ -1412,4 +1584,9 @@ server.listen(config.port, config.host, () => {
       })
       .catch((error) => console.warn(`Telegram bot command menu registration failed: ${error.message}`));
   }
+}
+
+start().catch((error) => {
+  app.log.error(error);
+  process.exit(1);
 });

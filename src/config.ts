@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -48,7 +48,7 @@ function csv(value) {
     .filter(Boolean);
 }
 
-module.exports = {
+const config = {
   rootDir,
   envFile,
   dataDir,
@@ -68,8 +68,10 @@ module.exports = {
   host: process.env.HOST || '127.0.0.1',
   publicUrl: (process.env.PUBLIC_URL || 'http://127.0.0.1:8787').replace(/\/$/, ''),
   adminToken: process.env.ADMIN_TOKEN || 'change-me-to-a-long-random-secret',
+  adminTokenHash: process.env.ADMIN_TOKEN_HASH || '',
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN || 'change-me-to-a-long-random-secret',
+  adminPasswordHash: process.env.ADMIN_PASSWORD_HASH || '',
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_TOKEN || '',
   adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS || 168),
   adminSessionIdleMinutes: Number(process.env.ADMIN_SESSION_IDLE_MINUTES || 30),
@@ -79,3 +81,5 @@ module.exports = {
   telegramAllowedUserIds: csv(process.env.TELEGRAM_ALLOWED_USER_IDS),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 50 * 1024 * 1024)
 };
+
+export default config;

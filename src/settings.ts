@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function settingsPath(config) {
   return path.join(config.dataDir, 'settings.json');
@@ -85,7 +85,7 @@ async function permanentlyDeleteTrashItem(config, storage, id) {
   return item;
 }
 
-module.exports = {
+export {
   ensureAlbums,
   ensureRecycleBin,
   findAlbum,

@@ -1,4 +1,4 @@
-const { readBody } = require('./utils');
+import { readBody } from './utils';
 
 function parseMultipart(buffer, boundary) {
   const delimiter = Buffer.from(`--${boundary}`);
@@ -36,7 +36,7 @@ function parseMultipart(buffer, boundary) {
 }
 
 function parseHeaders(raw) {
-  const headers = {};
+  const headers: Record<string, string> = {};
   for (const line of raw.split(/\r?\n/)) {
     const index = line.indexOf(':');
     if (index === -1) continue;
@@ -46,7 +46,7 @@ function parseHeaders(raw) {
 }
 
 function parseDisposition(value) {
-  const result = {};
+  const result: Record<string, string> = {};
   for (const segment of value.split(';')) {
     const [key, rawValue] = segment.trim().split('=');
     if (!rawValue) continue;
@@ -67,4 +67,4 @@ async function parseMultipartRequest(req, maxBytes) {
   return parseMultipart(body, match[1] || match[2]);
 }
 
-module.exports = { parseMultipartRequest };
+export { parseMultipartRequest };

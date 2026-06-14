@@ -164,6 +164,21 @@ docker compose restart
 docker compose down
 ```
 
+健康检查：
+
+```bash
+curl http://127.0.0.1:8787/healthz
+```
+
+备份与恢复：
+
+```bash
+cd /opt/telepic
+sh scripts/backup.sh
+sh scripts/restore.sh /opt/telepic/backups/telepic-backup-YYYYmmdd-HHMMSS.tar.gz
+docker compose restart
+```
+
 如果你想在 Linux 机器上先做一轮部署自检，再决定是否上线：
 
 ```bash
@@ -174,9 +189,10 @@ sh scripts/self-check.sh
 它会依次检查：
 
 - npm 依赖安装
-- `src/server.js` 语法
-- `src/web.js` 语法
-- `public/app.js` 语法
+- TypeScript 类型检查
+- 前端和后端构建
+- `dist/server.js` 语法
+- `dist/web.js` 语法
 - `docker compose` 配置
 - Docker 镜像构建
 
@@ -186,7 +202,9 @@ sh scripts/self-check.sh
 
 ```bash
 cp .env.example .env
-node src/server.js
+npm install
+npm run build
+npm start
 ```
 
 访问：
@@ -200,6 +218,7 @@ http://127.0.0.1:8787
 ```text
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=change-me-admin-password
+ADMIN_PASSWORD_HASH=
 ```
 
 ## Telegram Bot
@@ -332,8 +351,12 @@ curl -X POST \
 | `STORAGE_DRIVER` | `local` 或 `s3` |
 | `ADMIN_USERNAME` | Web 管理台用户名 |
 | `ADMIN_PASSWORD` | Web 管理台密码 |
+| `ADMIN_PASSWORD_HASH` | 管理员密码哈希，优先于明文密码 |
 | `ADMIN_SESSION_HOURS` | Web 登录会话有效期 |
+| `ADMIN_SESSION_IDLE_MINUTES` | Web 登录空闲超时 |
 | `ADMIN_TOKEN` | 管理 API 密钥和会话签名密钥 |
+| `ADMIN_TOKEN_HASH` | 管理 API 密钥哈希，轮换后优先使用 |
+| `ADMIN_SESSION_SECRET` | 会话签名密钥 |
 | `PUBLIC_UPLOAD` | 是否允许匿名上传 |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot token |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook 路径密钥 |

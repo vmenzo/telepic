@@ -1,6 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const { now, randomId, sha256 } = require('./utils');
+import fs from 'fs';
+import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
+import { now, randomId, sha256 } from './utils';
 
 function createDb(config) {
   if (config.databaseDriver === 'sqlite') {
@@ -10,6 +11,13 @@ function createDb(config) {
 }
 
 class JsonDb {
+  filePath: string;
+  state: {
+    images: any[];
+    tokens: any[];
+    events: any[];
+  };
+
   constructor(filePath) {
     this.filePath = filePath;
     this.state = {
@@ -71,7 +79,7 @@ class JsonDb {
     return image;
   }
 
-  createToken({ name, scopes }) {
+  createToken({ name, scopes, expiresAt = null }) {
     const token = `tp_${randomId(24)}`;
     const record = {
       id: randomId(8),
@@ -79,7 +87,9 @@ class JsonDb {
       tokenHash: sha256(Buffer.from(token)),
       scopes: normalizeScopes(scopes),
       createdAt: now(),
-      lastUsedAt: null
+      lastUsedAt: null,
+      lastUsedIp: null,
+      expiresAt: normalizeExpiresAt(expiresAt)
     };
     this.state.tokens.unshift(record);
     this.addEvent('token.created', { id: record.id, name: record.name });
@@ -102,10 +112,11 @@ class JsonDb {
     return this.state.tokens.find((token) => token.tokenHash === tokenHash);
   }
 
-  touchToken(id) {
+  touchToken(id, ip = '') {
     const token = this.state.tokens.find((item) => item.id === id);
     if (!token) return;
     token.lastUsedAt = now();
+    token.lastUsedIp = ip || token.lastUsedIp || null;
     this.save();
   }
 
@@ -135,9 +146,18 @@ class JsonDb {
   publicToken(token) {
     return publicToken(token);
   }
+
+  findImageBySha256(hash) {
+    if (!hash) return null;
+    return this.state.images.find((image) => image.sha256 === hash && !image.deletedAt) || null;
+  }
 }
 
 class SqliteDb {
+  filePath: string;
+  importJsonPath: string;
+  db: any;
+
   constructor(filePath, importJsonPath) {
     this.filePath = filePath;
     this.importJsonPath = importJsonPath;
@@ -146,7 +166,6 @@ class SqliteDb {
 
   load() {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const { DatabaseSync } = require('node:sqlite');
     this.db = new DatabaseSync(this.filePath);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');
@@ -184,7 +203,9 @@ class SqliteDb {
         token_hash TEXT NOT NULL UNIQUE,
         scopes TEXT NOT NULL DEFAULT '["upload"]',
         created_at TEXT NOT NULL,
-        last_used_at TEXT
+        last_used_at TEXT,
+        last_used_ip TEXT,
+        expires_at TEXT
       );
 
       CREATE TABLE IF NOT EXISTS events (
@@ -196,6 +217,8 @@ class SqliteDb {
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
     `);
     this.ensureColumn('images', 'storage_driver', "TEXT NOT NULL DEFAULT 'local'");
+    this.ensureColumn('tokens', 'last_used_ip', 'TEXT');
+    this.ensureColumn('tokens', 'expires_at', 'TEXT');
   }
 
   ensureColumn(table, column, definition) {
@@ -217,8 +240,8 @@ class SqliteDb {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertToken = this.db.prepare(`
-      INSERT OR IGNORE INTO tokens (id, name, token_hash, scopes, created_at, last_used_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO tokens (id, name, token_hash, scopes, created_at, last_used_at, last_used_ip, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertEvent = this.db.prepare(`
       INSERT OR IGNORE INTO events (id, type, details, created_at)
@@ -229,7 +252,7 @@ class SqliteDb {
     try {
       for (const image of state.images || []) insertImage.run(...imageValues(image));
       for (const token of state.tokens || []) {
-        insertToken.run(token.id, token.name || 'API token', token.tokenHash, jsonText(normalizeScopes(token.scopes)), token.createdAt || now(), token.lastUsedAt || null);
+        insertToken.run(token.id, token.name || 'API token', token.tokenHash, jsonText(normalizeScopes(token.scopes)), token.createdAt || now(), token.lastUsedAt || null, token.lastUsedIp || null, normalizeExpiresAt(token.expiresAt));
       }
       for (const event of state.events || []) {
         insertEvent.run(event.id || randomId(8), event.type || 'event', jsonText(event.details || {}), event.createdAt || now());
@@ -300,7 +323,7 @@ class SqliteDb {
     return image;
   }
 
-  createToken({ name, scopes }) {
+  createToken({ name, scopes, expiresAt = null }) {
     const token = `tp_${randomId(24)}`;
     const record = {
       id: randomId(8),
@@ -308,12 +331,14 @@ class SqliteDb {
       tokenHash: sha256(Buffer.from(token)),
       scopes: normalizeScopes(scopes),
       createdAt: now(),
-      lastUsedAt: null
+      lastUsedAt: null,
+      lastUsedIp: null,
+      expiresAt: normalizeExpiresAt(expiresAt)
     };
     this.db.prepare(`
-      INSERT INTO tokens (id, name, token_hash, scopes, created_at, last_used_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(record.id, record.name, record.tokenHash, jsonText(record.scopes), record.createdAt, record.lastUsedAt);
+      INSERT INTO tokens (id, name, token_hash, scopes, created_at, last_used_at, last_used_ip, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(record.id, record.name, record.tokenHash, jsonText(record.scopes), record.createdAt, record.lastUsedAt, record.lastUsedIp, record.expiresAt);
     this.addEvent('token.created', { id: record.id, name: record.name });
     return { token, record: this.publicToken(record) };
   }
@@ -334,8 +359,8 @@ class SqliteDb {
     return row ? rowToToken(row) : null;
   }
 
-  touchToken(id) {
-    this.db.prepare('UPDATE tokens SET last_used_at = ? WHERE id = ?').run(now(), id);
+  touchToken(id, ip = '') {
+    this.db.prepare('UPDATE tokens SET last_used_at = ?, last_used_ip = COALESCE(NULLIF(?, \'\'), last_used_ip) WHERE id = ?').run(now(), ip || '', id);
   }
 
   deleteToken(id) {
@@ -361,6 +386,12 @@ class SqliteDb {
 
   publicToken(token) {
     return publicToken(token);
+  }
+
+  findImageBySha256(hash) {
+    if (!hash) return null;
+    const row = this.db.prepare('SELECT * FROM images WHERE sha256 = ? ORDER BY created_at DESC LIMIT 1').get(hash);
+    return row ? rowToImage(row) : null;
   }
 }
 
@@ -413,7 +444,9 @@ function rowToToken(row) {
     tokenHash: row.token_hash,
     scopes: parseJson(row.scopes, ['upload']),
     createdAt: row.created_at,
-    lastUsedAt: row.last_used_at
+    lastUsedAt: row.last_used_at,
+    lastUsedIp: row.last_used_ip,
+    expiresAt: row.expires_at
   };
 }
 
@@ -531,12 +564,22 @@ function publicToken(token) {
     name: token.name,
     scopes: token.scopes,
     createdAt: token.createdAt,
-    lastUsedAt: token.lastUsedAt
+    lastUsedAt: token.lastUsedAt,
+    lastUsedIp: token.lastUsedIp || null,
+    expiresAt: token.expiresAt || null,
+    expired: token.expiresAt ? new Date(token.expiresAt).getTime() <= Date.now() : false
   };
 }
 
 function normalizeScopes(scopes) {
   return Array.isArray(scopes) && scopes.length ? scopes : ['upload'];
+}
+
+function normalizeExpiresAt(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
 }
 
 function jsonText(value) {
@@ -551,4 +594,4 @@ function parseJson(value, fallback) {
   }
 }
 
-module.exports = { JsonDb, SqliteDb, createDb };
+export { JsonDb, SqliteDb, createDb };

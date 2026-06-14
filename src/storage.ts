@@ -1,7 +1,7 @@
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const { extensionForMime, now, randomId, sha256 } = require('./utils');
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { extensionForMime, now, randomId, sha256 } from './utils';
 
 function createStorage(config) {
   if (config.storageDriver === 's3') {
@@ -11,6 +11,9 @@ function createStorage(config) {
 }
 
 class LocalStorage {
+  uploadDir: string;
+  driver: string;
+
   constructor(uploadDir) {
     this.uploadDir = uploadDir;
     this.driver = 'local';
@@ -23,7 +26,7 @@ class LocalStorage {
   saveImage({ buffer, mime, originalName, source, owner }) {
     this.ensure();
     const record = createImageRecord({ buffer, mime, originalName, source, owner, storageDriver: this.driver });
-    this.writeObject(record, buffer, mime);
+    this.writeObject(record, buffer);
     return record;
   }
 
@@ -52,6 +55,16 @@ class LocalStorage {
 }
 
 class S3Storage {
+  driver: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  endpoint: string;
+  publicBaseUrl: string;
+  prefix: string;
+  forcePathStyle: boolean;
+
   constructor(config) {
     this.driver = 's3';
     this.bucket = config.s3Bucket;
@@ -254,4 +267,4 @@ function hmac(key, value) {
   return crypto.createHmac('sha256', key).update(value).digest();
 }
 
-module.exports = { createStorage };
+export { createStorage };

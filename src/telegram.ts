@@ -1,5 +1,5 @@
-const { isImageMime, randomId } = require('./utils');
-const { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, writeSettings } = require('./settings');
+import { isImageMime, randomId } from './utils';
+import { ensureAlbums, ensureRecycleBin, findAlbum, moveImageToRecycleBin, permanentlyDeleteTrashItem, readSettings, removeImagesFromAlbums, restoreTrashItem, writeSettings } from './settings';
 
 const TG_PAGE_SIZE = 6;
 const TG_PENDING_TTL_MS = 10 * 60 * 1000;
@@ -976,7 +976,7 @@ async function handleCallbackQuery({ callback, config, db, storage }) {
   if (action === 'cancel') {
     clearPendingAction(chatId, userId);
     const target = a || 'home';
-    await routeTelegramBackTarget({ target, args: [b, c], config, db, storage, chatId, userId, messageId });
+    await routeTelegramBackTarget({ target, args: [b, c], config, db, storage, chatId, userId, messageId } as any);
     await answerCallback(config, callback.id, '已取消');
     return { ok: true };
   }
@@ -1961,7 +1961,7 @@ function albumSortLabel(value) {
 function applyAlbumOrdering(images, album) {
   const sortMode = normalizeAlbumSortMode(album && album.sortMode);
   if (sortMode === 'manual') {
-    const order = new Map(((album && album.imageIds) || []).map((id, index) => [String(id), index]));
+    const order = new Map<string, number>(((album && album.imageIds) || []).map((id, index) => [String(id), index]));
     return [...images].sort((a, b) => (order.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) - (order.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER));
   }
   if (sortMode === 'name') return [...images].sort((a, b) => String(a.originalName || '').localeCompare(String(b.originalName || ''), 'zh-CN'));
@@ -2104,7 +2104,7 @@ function buildLink(image, format) {
   return image.url;
 }
 
-function publicImage(image, config = { publicUrl: '' }) {
+function publicImage(image, config: any = { publicUrl: '' }) {
   const url = image.url || `${config.publicUrl}/i/${image.id}`;
   const rawUrl = image.rawUrl || `${config.publicUrl}/raw/${image.id}`;
   const shouldAttachAccess = image.visibility === 'private' && config.adminToken;
@@ -2132,7 +2132,7 @@ function truncate(value, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-module.exports = {
+export {
   handleTelegramUpdate,
   registerTelegramBotCommands,
   telegramAllowedUpdates,
